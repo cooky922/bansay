@@ -44,7 +44,7 @@ export interface RehearsalMessage {
   sender: "student" | "teacher";
   text: string;
   timestamp: string;
-  attachmentType?: "text" | "voice-note" | "handwritten-photo";
+  attachmentType?: "text" | "voice-note" | "video-note" | "handwritten-photo";
 }
 
 export interface MentorReviewNote {

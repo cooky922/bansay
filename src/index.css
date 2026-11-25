@@ -27,6 +27,28 @@
     min-width: 0;
   }
 
+  button, [role="button"], summary, label[for], select {
+    cursor: pointer;
+  }
+
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), textarea {
+    cursor: text;
+  }
+
+  button:disabled, select:disabled, input:disabled, textarea:disabled {
+    cursor: not-allowed;
+  }
+
+  button, input, select, textarea, summary {
+    transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease,
+      box-shadow 150ms ease, opacity 150ms ease;
+  }
+
+  :focus-visible {
+    outline: 2px solid #7c3aed;
+    outline-offset: 2px;
+  }
+
   h1, h2, h3, h4, .font-display {
     font-family: var(--font-display);
   }

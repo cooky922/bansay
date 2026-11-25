@@ -35,6 +35,7 @@ interface LessonPrepStudioProps {
   onCreateOrUpdateCase: (newCase: LessonCase) => void;
   onUpdateActiveCase: (updated: LessonCase) => void;
   onGoToRehearsal: () => void;
+  onNotify: (message: string) => void;
 }
 
 type SupportTab = "bridge" | "misconceptions" | "activity";
@@ -55,6 +56,7 @@ export function LessonPrepStudio({
   onCreateOrUpdateCase,
   onUpdateActiveCase,
   onGoToRehearsal,
+  onNotify,
 }: LessonPrepStudioProps) {
   const copy = UI_COPY[language];
   const [step, setStep] = useState<1 | 2>(2);
@@ -205,6 +207,7 @@ export function LessonPrepStudio({
       setBaselineSkipped(false);
       setSupportTab("bridge");
       setStep(2);
+      onNotify("Lesson support is ready to use");
     } catch (err) {
       const msg =
         err instanceof Error
@@ -279,9 +282,12 @@ export function LessonPrepStudio({
 
   return (
     <div className="space-y-6">
-      {/* Top Switcher Bar: Step 1 (Intake) vs Step 2 (Ready Support) + Saved Lessons */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="inline-flex items-center gap-1 p-1 bg-slate-200/70 rounded-xl">
+      {/* Compact workflow and current lesson context */}
+      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 sm:px-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2" aria-label="Lesson workflow">
+          <span className="hidden text-xs font-medium text-slate-500 sm:inline">Lesson workflow</span>
+          <div className="inline-flex items-center gap-1 rounded-lg bg-slate-100 p-1">
           <button
             type="button"
             onClick={() => setStep(1)}
@@ -291,7 +297,7 @@ export function LessonPrepStudio({
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            1. Lesson intake
+            <span className="mr-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-current/10 text-[10px]">1</span> Intake
           </button>
           <button
             type="button"
@@ -302,13 +308,14 @@ export function LessonPrepStudio({
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            2. Ready-to-use support
+            <span className="mr-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-current/10 text-[10px]">2</span> Support
           </button>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
-          <label htmlFor="active-case-select" className="text-xs text-slate-500 whitespace-nowrap">
-            Active lesson:
+          <label htmlFor="active-case-select" className="sr-only">
+            Active lesson
           </label>
           <select
             id="active-case-select"
@@ -327,7 +334,7 @@ export function LessonPrepStudio({
               </option>
             ))}
           </select>
-        </div>
+        </div></div>
       </div>
 
       {step === 1 ? (
@@ -621,22 +628,16 @@ export function LessonPrepStudio({
         /* STEP 2: Ready-to-use Support (Figure 4) */
         <section className="space-y-5">
           {/* Header Row */}
-          <div className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8">
+          <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-7">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 mb-1">
-                  <span className="font-semibold text-violet-700">{copy.step2Kicker}</span>
-                  <span aria-hidden="true">·</span>
-                  <span>
-                    {activeCase.subject} · {activeCase.gradeLevel}
-                  </span>
-                  <span aria-hidden="true">·</span>
-                  <span>Major: {activeCase.teacherMajor}</span>
+                <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600 mb-2">
+                  <span className="rounded-full bg-violet-50 px-2 py-0.5 font-semibold text-violet-700">{activeCase.subject}</span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5">{activeCase.gradeLevel}</span>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5">{activeCase.teacherMajor}</span>
                 </div>
-                <h1 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight text-balance">
-                  {copy.step2Title}
-                </h1>
-                <p className="text-sm text-slate-600 mt-1">{activeCase.topic}</p>
+                <h1 className="font-display text-xl sm:text-2xl font-bold text-slate-900 tracking-tight text-balance">{activeCase.topic}</h1>
+                <p className="text-sm text-slate-600 mt-1">{copy.step2Title}</p>
                 {demoMode && (
                   <p className="mt-2 inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
                     Demo mode · Sample coaching guidance is active until an OpenRouter key is configured.

@@ -7,6 +7,7 @@ import {
   Lock,
   Sparkles,
   UserCheck,
+  Video,
 } from "lucide-react";
 import type {
   BansayLanguage,
@@ -16,6 +17,7 @@ import type {
   UserRole,
 } from "../types/bansay";
 import { PILOT_BUDGET_ITEMS, UI_COPY } from "../data/bansayData";
+import type { LocalMentorRecording } from "../App";
 
 interface CohortOversightProps {
   language: BansayLanguage;
@@ -24,6 +26,7 @@ interface CohortOversightProps {
   onUpdateCase: (updated: LessonCase) => void;
   onAddPeerLibraryItem: (item: PeerLibraryItem) => void;
   cohortSeats: CohortSeat[];
+  mentorVideos: Record<string, LocalMentorRecording>;
 }
 
 export function CohortOversight({
@@ -33,6 +36,7 @@ export function CohortOversight({
   onUpdateCase,
   onAddPeerLibraryItem,
   cohortSeats,
+  mentorVideos,
 }: CohortOversightProps) {
   const copy = UI_COPY[language];
 
@@ -307,6 +311,16 @@ export function CohortOversight({
                     </p>
                   ))}
                 </div>
+
+                {mentorVideos[selectedCase.id] && (
+                  <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-3.5 space-y-2">
+                    <p className="flex items-center gap-1.5 text-xs font-semibold text-violet-900">
+                      <Video className="h-3.5 w-3.5" /> Local teacher {mentorVideos[selectedCase.id].kind === "video" ? "video" : "voice"} response
+                    </p>
+                    {mentorVideos[selectedCase.id].kind === "video" ? <video controls playsInline src={mentorVideos[selectedCase.id].url} className="aspect-video w-full rounded-lg bg-slate-950" /> : <audio controls src={mentorVideos[selectedCase.id].url} className="h-9 w-full" />}
+                    <p className="text-[11px] text-slate-600">Demo-only local recording. It is not uploaded or used by AI, and is lost when this browser session ends.</p>
+                  </div>
+                )}
 
                 {selectedCase.freshCaseResponse && (
                   <div className="rounded-xl bg-violet-50/50 border border-violet-200 p-3.5">
