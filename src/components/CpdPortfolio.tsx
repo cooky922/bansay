@@ -315,12 +315,12 @@ export function CpdPortfolio({
       {/* Add Classroom Evidence Modal */}
       {modalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-3 sm:p-4 bg-slate-950/50"
           role="dialog"
           aria-modal="true"
           aria-labelledby="add-evidence-title"
         >
-          <div className="w-full max-w-lg bg-white rounded-2xl border border-slate-200 shadow-xl p-6 space-y-4">
+          <div className="my-auto w-full max-w-lg max-h-[calc(100dvh-1.5rem)] overflow-y-auto bg-white rounded-2xl border border-slate-200 shadow-xl p-4 sm:p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h2
                 id="add-evidence-title"

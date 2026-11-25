@@ -199,7 +199,7 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-screen flex bg-[#F7F6FB] text-slate-900 ${
+      className={`min-h-[100dvh] flex overflow-x-clip bg-[#F7F6FB] text-slate-900 ${
         lowDataMode ? "low-data-mode" : ""
       }`}
     >
@@ -227,8 +227,8 @@ export default function App() {
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
         />
 
-        <main className="flex-1 px-4 sm:px-8 py-6 sm:py-8">
-          <div className="max-w-6xl mx-auto">
+        <main className="flex-1 min-w-0 px-3 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
+          <div className="w-full max-w-6xl mx-auto">
             {activeSection === "prep" && (
               <LessonPrepStudio
                 language={language}

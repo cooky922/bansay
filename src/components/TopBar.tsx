@@ -29,10 +29,10 @@ export function TopBar({
     role === "teacher" ? "MR" : role === "mentor" ? "RV" : "CO";
 
   return (
-    <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-4 sm:px-6 py-3">
-      <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-4">
+    <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-3 py-3 sm:px-6">
+      <div className="max-w-6xl mx-auto flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
         {/* Left: Mobile trigger + Low-Data mode + Language switch */}
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2.5 min-w-0 sm:gap-3">
           <button
             type="button"
             onClick={onOpenMobileMenu}
@@ -66,7 +66,7 @@ export function TopBar({
         </div>
 
         {/* Right: Language switch + Role switch + Avatar */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between gap-2 sm:justify-end sm:gap-3">
           <div
             className="inline-flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200/80"
             role="group"
@@ -84,7 +84,7 @@ export function TopBar({
                 key={item.code}
                 type="button"
                 onClick={() => onChangeLanguage(item.code)}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 focus-visible:outline-2 focus-visible:outline-violet-600 ${
+                className={`px-2 py-1 rounded-md text-xs font-medium transition-colors whitespace-nowrap shrink-0 sm:px-2.5 focus-visible:outline-2 focus-visible:outline-violet-600 ${
                   language === item.code
                     ? "bg-white text-violet-900 shadow-xs font-semibold"
                     : "text-slate-600 hover:text-slate-900"
