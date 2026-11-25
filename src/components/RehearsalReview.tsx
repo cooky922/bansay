@@ -653,8 +653,8 @@ export function RehearsalReview({
           aria-modal="true"
           aria-labelledby="peer-library-title"
         >
-          <div className="w-full max-w-lg bg-white h-full shadow-2xl flex flex-col border-l border-slate-200">
-            <div className="px-6 py-5 border-b border-slate-200 flex items-start justify-between gap-4">
+          <div className="w-full max-w-lg bg-white h-[100dvh] shadow-2xl flex flex-col border-l border-slate-200">
+            <div className="px-4 py-4 sm:px-6 sm:py-5 border-b border-slate-200 flex items-start justify-between gap-4">
               <div>
                 <p className="text-xs font-semibold text-violet-700">
                   Shared LAC / Peer Library
@@ -676,7 +676,7 @@ export function RehearsalReview({
               </button>
             </div>
 
-            <div className="px-6 py-4 space-y-4 overflow-y-auto flex-1">
+            <div className="px-4 py-4 sm:px-6 space-y-4 overflow-y-auto flex-1">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 flex items-start gap-2.5">
                 <Lock className="w-4 h-4 text-slate-600 mt-0.5 shrink-0" />
                 <p className="text-xs text-slate-700 leading-relaxed">

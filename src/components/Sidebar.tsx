@@ -83,7 +83,7 @@ export function Sidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-[#31175B] text-white flex flex-col justify-between transition-transform duration-200 lg:static lg:translate-x-0 shrink-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(16rem,calc(100vw-2.5rem))] flex-col justify-between overflow-y-auto bg-[#31175B] text-white transition-transform duration-200 lg:static lg:h-auto lg:w-64 lg:translate-x-0 lg:overflow-visible shrink-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         aria-label="Primary navigation"

@@ -7,11 +7,24 @@
 }
 
 @layer base {
+  html, body, #root {
+    min-height: 100%;
+  }
+
   html {
     font-family: var(--font-sans);
     color: #18181b;
     background-color: #f7f6fb;
     -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    min-width: 320px;
+    overflow-x: hidden;
+  }
+
+  button, input, select, textarea {
+    min-width: 0;
   }
 
   h1, h2, h3, h4, .font-display {
@@ -39,4 +52,10 @@
 .low-data-mode *, .low-data-mode *::before, .low-data-mode *::after {
   transition-duration: 0.01ms !important;
   animation-duration: 0.01ms !important;
+}
+
+@media (max-width: 639px) {
+  input, select, textarea {
+    font-size: 16px;
+  }
 }

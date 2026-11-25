@@ -319,7 +319,7 @@ export function LessonPrepStudio({
               setBaselineSkipped(false);
               setDemoMode(false);
             }}
-            className="text-xs font-medium text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-1.5 max-w-xs truncate focus-visible:outline-2 focus-visible:outline-violet-600"
+            className="w-full sm:w-auto text-xs font-medium text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 sm:py-1.5 sm:max-w-xs truncate focus-visible:outline-2 focus-visible:outline-violet-600"
           >
             {cases.map((c) => (
               <option key={c.id} value={c.id}>
@@ -331,7 +331,7 @@ export function LessonPrepStudio({
       </div>
 
       {step === 1 ? (
-        <section className="bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 max-w-4xl">
+        <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-8 max-w-4xl">
           <p className="text-xs font-medium text-violet-700 mb-1">
             {copy.step1Kicker}
           </p>
