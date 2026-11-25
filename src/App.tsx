@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { CheckCircle2, X } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { LessonPrepStudio } from "./components/LessonPrepStudio";
@@ -23,6 +24,11 @@ import {
   TRILINGUAL_SUGAR_CASE,
 } from "./data/bansayData";
 
+export type LocalMentorRecording = {
+  url: string;
+  kind: "voice" | "video";
+};
+
 function loadStored<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
@@ -41,6 +47,9 @@ export default function App() {
     loadStored("bansay_low_data_v1", false)
   );
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [mentorVideos, setMentorVideos] = useState<Record<string, LocalMentorRecording>>({});
 
   const [cases, setCases] = useState<LessonCase[]>(() =>
     loadStored("bansay_cases_v1", INITIAL_CASES)
@@ -90,6 +99,12 @@ export default function App() {
     }
   }, [lowDataMode]);
 
+  useEffect(() => {
+    if (!toast) return;
+    const timeout = window.setTimeout(() => setToast(null), 4200);
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
+
   const handleLanguageChange = (nextLang: BansayLanguage) => {
     setLanguage(nextLang);
     // Keep the flagship Grade 7 Science demonstration case seamlessly localized across EN/FIL/CEB
@@ -133,6 +148,7 @@ export default function App() {
         };
       })
     );
+    setToast(`Language changed to ${nextLang === "en" ? "English" : nextLang === "fil" ? "Filipino" : "Cebuano"}`);
   };
 
   const handleRoleChange = (nextRole: UserRole) => {
@@ -142,6 +158,7 @@ export default function App() {
     } else if (activeSection === "cohort") {
       setActiveSection("prep");
     }
+    setToast(`Viewing as ${nextRole}`);
   };
 
   const activeCase = useMemo(
@@ -187,6 +204,21 @@ export default function App() {
     );
   };
 
+  const handleStoreMentorVideo = (caseId: string, recording: LocalMentorRecording) => {
+    setMentorVideos((current) => {
+      if (current[caseId] && current[caseId].url !== recording.url) URL.revokeObjectURL(current[caseId].url);
+      return { ...current, [caseId]: recording };
+    });
+  };
+
+  const handleClearMentorVideo = (caseId: string) => {
+    setMentorVideos((current) => {
+      if (current[caseId]) URL.revokeObjectURL(current[caseId].url);
+      const { [caseId]: _, ...remaining } = current;
+      return remaining;
+    });
+  };
+
   const completedCompetencies = quarters.reduce(
     (sum, q) => sum + q.completedCount,
     0
@@ -213,17 +245,22 @@ export default function App() {
         pendingReviewsCount={pendingReviewsCount}
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
+        collapsed={sidebarCollapsed}
+        onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
+        lowDataMode={lowDataMode}
+        onToggleLowDataMode={() => {
+          setLowDataMode((value) => !value);
+          setToast(lowDataMode ? "Standard data mode enabled" : "Low-data mode enabled");
+        }}
+        onChangeLanguage={handleLanguageChange}
+        onChangeRole={handleRoleChange}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar
           language={language}
-          onChangeLanguage={handleLanguageChange}
           lowDataMode={lowDataMode}
-          onToggleLowDataMode={() => setLowDataMode((v) => !v)}
           cachedCount={cachedCount}
-          role={role}
-          onChangeRole={handleRoleChange}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
         />
 
@@ -239,6 +276,7 @@ export default function App() {
                 onCreateOrUpdateCase={handleCreateOrUpdateCase}
                 onUpdateActiveCase={handleUpdateCase}
                 onGoToRehearsal={() => setActiveSection("rehearsal")}
+                onNotify={setToast}
               />
             )}
 
@@ -253,6 +291,9 @@ export default function App() {
                   setRole("mentor");
                   setActiveSection("cohort");
                 }}
+                mentorRecording={mentorVideos[activeCase.id]}
+                onStoreMentorVideo={handleStoreMentorVideo}
+                onClearMentorVideo={handleClearMentorVideo}
               />
             )}
 
@@ -274,11 +315,22 @@ export default function App() {
                 onUpdateCase={handleUpdateCase}
                 onAddPeerLibraryItem={handleAddPeerLibraryItem}
                 cohortSeats={INITIAL_COHORT_SEATS}
+                mentorVideos={mentorVideos}
               />
             )}
           </div>
         </main>
       </div>
+
+      {toast && (
+        <div className="fixed bottom-4 right-4 z-[70] flex max-w-sm items-start gap-3 rounded-xl border border-emerald-200 bg-white px-4 py-3 shadow-lg shadow-slate-900/10" role="status">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+          <p className="flex-1 text-sm font-medium text-slate-800">{toast}</p>
+          <button type="button" onClick={() => setToast(null)} className="-mr-1 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Dismiss notification">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

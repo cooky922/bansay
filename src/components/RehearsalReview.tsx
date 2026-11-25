@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   BookMarked,
   CalendarClock,
@@ -11,7 +11,10 @@ import {
   Search,
   Send,
   Sparkles,
+  Square,
+  Trash2,
   UserCheck,
+  Video,
   X,
 } from "lucide-react";
 import type {
@@ -22,6 +25,7 @@ import type {
   SubjectName,
 } from "../types/bansay";
 import { UI_COPY } from "../data/bansayData";
+import type { LocalMentorRecording } from "../App";
 
 interface RehearsalReviewProps {
   language: BansayLanguage;
@@ -30,6 +34,9 @@ interface RehearsalReviewProps {
   peerLibrary: PeerLibraryItem[];
   onSaveLibraryItem: (id: string) => void;
   onSwitchToMentorQueue: () => void;
+  mentorRecording?: LocalMentorRecording;
+  onStoreMentorVideo: (caseId: string, recording: LocalMentorRecording) => void;
+  onClearMentorVideo: (caseId: string) => void;
 }
 
 export function RehearsalReview({
@@ -39,16 +46,24 @@ export function RehearsalReview({
   peerLibrary,
   onSaveLibraryItem,
   onSwitchToMentorQueue,
+  mentorRecording,
+  onStoreMentorVideo,
+  onClearMentorVideo,
 }: RehearsalReviewProps) {
   const copy = UI_COPY[language];
   const [scenarioTab, setScenarioTab] = useState<1 | 2>(
     activeCase.mentorReview.status === "returned" ? 1 : 1
   );
   const [teacherInput, setTeacherInput] = useState("");
-  const [voiceMode, setVoiceMode] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingKind, setRecordingKind] = useState<"voice" | "video">("video");
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [voiceUrl, setVoiceUrl] = useState<string | null>(null);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [rehearsalError, setRehearsalError] = useState<string | null>(null);
   const [submissionNotice, setSubmissionNotice] = useState<string | null>(null);
+  const [demoNotice, setDemoNotice] = useState(false);
 
   // Scenario 2 state
   const [revisionDraft, setRevisionDraft] = useState(activeCase.teacherRevision);
@@ -61,6 +76,118 @@ export function RehearsalReview({
   const [expandedLibId, setExpandedLibId] = useState<string | null>(
     peerLibrary[0]?.id ?? null
   );
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recordingTimerRef = useRef<number | null>(null);
+  const videoChunksRef = useRef<Blob[]>([]);
+  const recognitionRef = useRef<any>(null);
+  const transcriptRef = useRef("");
+  const recordedVideoUrl = voiceUrl || mentorRecording?.url;
+  const recordedKind = voiceUrl ? recordingKind : mentorRecording?.kind;
+
+  const clearRecordingTimer = () => {
+    if (recordingTimerRef.current !== null) {
+      window.clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  };
+
+  const clearVoiceNote = () => {
+    setVoiceUrl(null);
+    setVoiceTranscript("");
+    transcriptRef.current = "";
+    onClearMentorVideo(activeCase.id);
+  };
+
+  useEffect(() => {
+    return () => {
+      clearRecordingTimer();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recognitionRef.current?.stop?.();
+    };
+  }, []);
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    recognitionRef.current?.stop?.();
+    clearRecordingTimer();
+    setIsRecording(false);
+  };
+
+  const startRecording = async () => {
+    setRehearsalError(null);
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setRehearsalError("Voice recording is not supported in this browser. Please type your explanation instead.");
+      return;
+    }
+
+    try {
+      clearVoiceNote();
+      const stream = await navigator.mediaDevices.getUserMedia(
+        recordingKind === "video"
+          ? { audio: true, video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } }
+          : { audio: true }
+      );
+      mediaStreamRef.current = stream;
+      const preferredMimeType = recordingKind === "video" && MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
+        ? "video/webm;codecs=vp8,opus"
+        : recordingKind === "video"
+        ? "video/webm"
+        : "audio/webm;codecs=opus";
+      const recorder = new MediaRecorder(stream, { mimeType: preferredMimeType });
+      videoChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) videoChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const clip = new Blob(videoChunksRef.current, { type: recorder.mimeType || (recordingKind === "video" ? "video/webm" : "audio/webm") });
+        if (clip.size > 0) {
+          const nextUrl = URL.createObjectURL(clip);
+          setVoiceUrl(nextUrl);
+          onStoreMentorVideo(activeCase.id, { url: nextUrl, kind: recordingKind });
+        }
+        stream.getTracks().forEach((track) => track.stop());
+        mediaStreamRef.current = null;
+      };
+
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = language === "fil" ? "fil-PH" : language === "ceb" ? "en-PH" : "en-PH";
+        recognition.onresult = (event: any) => {
+          let transcript = "";
+          for (let index = 0; index < event.results.length; index += 1) {
+            transcript += event.results[index][0].transcript;
+          }
+          transcriptRef.current = transcript.trim();
+          setVoiceTranscript(transcript.trim());
+          setTeacherInput(transcript.trim());
+        };
+        recognition.onerror = (event: any) => {
+          if (event.error !== "no-speech" && event.error !== "aborted") {
+            setRehearsalError("Your voice note was recorded, but browser transcription was unavailable. You can type the explanation before sending.");
+          }
+        };
+        recognition.start();
+        recognitionRef.current = recognition;
+      } else {
+        setRehearsalError("Your voice note will be recorded locally. Type a short transcript before sending because this browser does not provide speech-to-text.");
+      }
+
+      recorder.start();
+      mediaRecorderRef.current = recorder;
+      setRecordingSeconds(0);
+      setIsRecording(true);
+      recordingTimerRef.current = window.setInterval(
+        () => setRecordingSeconds((seconds) => seconds + 1),
+        1000
+      );
+    } catch {
+      setRehearsalError("Camera and microphone access were not granted. Check your browser permission and try again.");
+    }
+  };
 
   const handleSendToStudent = async (e: FormEvent) => {
     e.preventDefault();
@@ -77,7 +204,7 @@ export function RehearsalReview({
       sender: "teacher",
       text: teacherInput.trim(),
       timestamp: nowTime,
-      attachmentType: voiceMode ? "voice-note" : "text",
+      attachmentType: recordedVideoUrl ? (recordedKind === "video" ? "video-note" : "voice-note") : "text",
     };
 
     const nextMessages = [...activeCase.rehearsalMessages, userMsg];
@@ -86,7 +213,6 @@ export function RehearsalReview({
       rehearsalMessages: nextMessages,
     });
     setTeacherInput("");
-    setVoiceMode(false);
     setIsSending(true);
 
     try {
@@ -111,6 +237,8 @@ export function RehearsalReview({
       if (!response.ok) {
         throw new Error(data.error || "Simulated learner could not respond.");
       }
+
+      setDemoNotice(Boolean(data.demo));
 
       const studentReply: RehearsalMessage = {
         id: `msg-s-${Date.now()}`,
@@ -257,6 +385,12 @@ export function RehearsalReview({
         </div>
       )}
 
+      {demoNotice && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+          Demo mode · This simulated learner reply is a local sample response. Add an OpenRouter key to use live AI rehearsal.
+        </div>
+      )}
+
       {/* Two-Column Rehearsal Layout (Figure 5) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left: Simulated Learner & Fresh Case (8 cols) */}
@@ -327,7 +461,8 @@ export function RehearsalReview({
                           {isStudent
                             ? `${activeCase.support.simulatedStudentPrompt.studentName} · Simulated ${activeCase.gradeLevel} learner`
                             : "Your classroom explanation"}
-                          {msg.attachmentType === "voice-note" && " · Voice note transcript"}
+                          {msg.attachmentType === "video-note" && " · Video response transcript"}
+                          {msg.attachmentType === "voice-note" && " · Voice response transcript"}
                         </span>
                         <span className="tabular-nums">{msg.timestamp}</span>
                       </div>
@@ -364,19 +499,54 @@ export function RehearsalReview({
                   >
                     Your response ({language === "en" ? "English" : language === "fil" ? "Filipino" : "Cebuano"})
                   </label>
+                  <div className="flex items-center gap-2">
+                  <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1" role="group" aria-label="Recording format">
+                    <button type="button" onClick={() => setRecordingKind("voice")} disabled={isRecording} className={`rounded-md px-2 py-1 text-[11px] font-medium ${recordingKind === "voice" ? "bg-white text-violet-900 shadow-sm" : "text-slate-600"}`}>Voice only</button>
+                    <button type="button" onClick={() => setRecordingKind("video")} disabled={isRecording} className={`rounded-md px-2 py-1 text-[11px] font-medium ${recordingKind === "video" ? "bg-white text-violet-900 shadow-sm" : "text-slate-600"}`}>Video + voice</button>
+                  </div>
                   <button
                     type="button"
-                    onClick={() => setVoiceMode(!voiceMode)}
-                    className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-lg border transition-colors ${
-                      voiceMode
-                        ? "bg-violet-50 border-violet-300 text-violet-900"
+                    onClick={isRecording ? stopRecording : startRecording}
+                    className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors ${
+                      isRecording
+                        ? "bg-rose-50 border-rose-300 text-rose-800"
                         : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                     }`}
                   >
-                    <Mic className="w-3.5 h-3.5" />
-                    <span>{voiceMode ? "Voice note mode active" : "Record voice note"}</span>
+                    {isRecording ? <Square className="w-3.5 h-3.5 fill-current" /> : recordingKind === "video" ? <Video className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+                    <span>{isRecording ? `Stop recording · ${recordingSeconds}s` : recordingKind === "video" ? "Record video response" : "Record voice response"}</span>
                   </button>
+                  </div>
                 </div>
+
+                {(isRecording || recordedVideoUrl) && (
+                  <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold text-violet-950">
+                        {isRecording ? `Recording ${recordingKind === "video" ? "video" : "voice"} response…` : `${recordedKind === "video" ? "Video" : "Voice"} response ready for mentor review`}
+                      </p>
+                      {recordedVideoUrl && !isRecording && (
+                        <button
+                          type="button"
+                          onClick={clearVoiceNote}
+                          className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-rose-700"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                    {recordedVideoUrl && (recordedKind === "video" ? <video controls playsInline src={recordedVideoUrl} className="aspect-video w-full rounded-lg bg-slate-950" /> : <audio controls src={recordedVideoUrl} className="h-9 w-full" />)}
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      This {recordedKind === "video" ? "video" : "voice recording"} stays in this browser session for your human mentor&apos;s review. Only the transcript below is sent to the AI learner.
+                    </p>
+                    {voiceTranscript && (
+                      <p className="rounded-lg bg-white/80 px-3 py-2 text-xs text-slate-700 leading-relaxed">
+                        {voiceTranscript}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <textarea
                   id="rehearsal-input"
@@ -384,8 +554,8 @@ export function RehearsalReview({
                   value={teacherInput}
                   onChange={(e) => setTeacherInput(e.target.value)}
                   placeholder={
-                    voiceMode
-                      ? "Speak or dictate your short classroom explanation (15–30 seconds)..."
+                    isRecording || recordedVideoUrl
+                      ? "Your voice transcript appears here. You can correct it before sending..."
                       : "Type the explanation you would give in class..."
                   }
                   className="w-full text-sm bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600"

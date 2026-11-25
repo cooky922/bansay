@@ -2,8 +2,13 @@ import {
   Award,
   BookOpen,
   ChevronRight,
+  ChevronLeft,
+  Globe,
   Lock,
   MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings,
   Sparkles,
   Users,
   X,
@@ -22,6 +27,12 @@ interface SidebarProps {
   pendingReviewsCount: number;
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+  lowDataMode: boolean;
+  onToggleLowDataMode: () => void;
+  onChangeLanguage: (language: BansayLanguage) => void;
+  onChangeRole: (role: UserRole) => void;
 }
 
 export function Sidebar({
@@ -34,6 +45,12 @@ export function Sidebar({
   pendingReviewsCount,
   mobileOpen,
   onCloseMobile,
+  collapsed,
+  onToggleCollapsed,
+  lowDataMode,
+  onToggleLowDataMode,
+  onChangeLanguage,
+  onChangeRole,
 }: SidebarProps) {
   const copy = UI_COPY[language];
   const progressPct = Math.min(100, Math.round((completedCompetencies / totalCompetencies) * 100));
@@ -83,17 +100,17 @@ export function Sidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(16rem,calc(100vw-2.5rem))] flex-col justify-between overflow-y-auto bg-[#31175B] text-white transition-transform duration-200 lg:static lg:h-auto lg:w-64 lg:translate-x-0 lg:overflow-visible shrink-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(16rem,calc(100vw-2.5rem))] flex-col justify-between overflow-y-auto bg-[#31175B] text-white transition-[transform,width] duration-200 lg:static lg:h-auto lg:translate-x-0 lg:overflow-visible shrink-0 ${collapsed ? "lg:w-[4.5rem]" : "lg:w-64"} ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         aria-label="Primary navigation"
       >
         <div>
           {/* Brand Header */}
-          <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-white/10">
+          <div className={`flex items-center border-b border-white/10 ${collapsed ? "justify-center px-3 py-4" : "justify-between px-5 pt-5 pb-4"}`}>
             <div className="flex items-center gap-2.5">
               <BansayLogo className="w-8 h-8 shrink-0" light />
-              <div className="leading-none">
+              <div className={`leading-none ${collapsed ? "lg:hidden" : ""}`}>
                 <span className="font-display text-lg font-extrabold tracking-tight text-white">
                   BANSAY
                 </span>
@@ -110,11 +127,20 @@ export function Sidebar({
             >
               <X className="w-5 h-5" />
             </button>
+            <button
+              type="button"
+              onClick={onToggleCollapsed}
+              className="hidden lg:inline-flex rounded-lg p-1.5 text-purple-200 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
+              aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+              title={collapsed ? "Expand navigation" : "Collapse navigation"}
+            >
+              {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </button>
           </div>
 
           {/* Workspace Nav */}
-          <div className="px-3.5 pt-5">
-            <p className="px-2.5 text-xs font-medium text-purple-200/75 mb-2">
+          <div className={`pt-5 ${collapsed ? "px-2" : "px-3.5"}`}>
+            <p className={`px-2.5 text-xs font-medium text-purple-200/75 mb-2 ${collapsed ? "lg:sr-only" : ""}`}>
               {copy.workspaceLabel}
             </p>
             <nav className="space-y-1">
@@ -126,7 +152,7 @@ export function Sidebar({
                     key={item.id}
                     type="button"
                     onClick={() => handleNav(item.id)}
-                    className={`w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-white ${
+                    className={`w-full flex items-center ${collapsed ? "justify-center px-2" : "justify-between px-3"} gap-2.5 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-white ${
                       isActive
                         ? "bg-white text-[#2B1354] shadow-sm font-semibold"
                         : "text-purple-100/90 hover:bg-white/10 hover:text-white"
@@ -138,9 +164,9 @@ export function Sidebar({
                           isActive ? "text-[#5B21B6]" : "text-purple-200"
                         }`}
                       />
-                      <span className="truncate">{item.label}</span>
+                      <span className={`truncate ${collapsed ? "lg:sr-only" : ""}`}>{item.label}</span>
                     </span>
-                    {item.hint && (
+                    {item.hint && !collapsed && (
                       <span
                         className={`text-xs tabular-nums font-mono px-1.5 py-0.5 rounded ${
                           isActive
@@ -151,6 +177,7 @@ export function Sidebar({
                         {item.hint}
                       </span>
                     )}
+                    <span className="sr-only">{item.label}</span>
                   </button>
                 );
               })}
@@ -159,21 +186,21 @@ export function Sidebar({
         </div>
 
         {/* Bottom Annual Track Card & Privacy Note */}
-        <div className="px-4 pb-5 pt-4 space-y-3">
-          <div className="rounded-xl bg-[#412277] border border-white/10 p-4">
+        <div className={`pb-5 pt-4 space-y-3 ${collapsed ? "px-2" : "px-4"}`}>
+          <div className={`rounded-xl bg-[#412277] border border-white/10 ${collapsed ? "p-2" : "p-4"}`}>
             <div className="flex items-center gap-2 text-purple-100 mb-2">
               <BookOpen className="w-4 h-4 text-purple-200 shrink-0" />
-              <span className="text-xs font-semibold text-white">
+              <span className={`text-xs font-semibold text-white ${collapsed ? "lg:sr-only" : ""}`}>
                 {copy.annualTrackTitle}
               </span>
             </div>
-            <p className="text-xs text-purple-100/85 leading-relaxed tabular-nums">
+            <p className={`text-xs text-purple-100/85 leading-relaxed tabular-nums ${collapsed ? "lg:hidden" : ""}`}>
               <strong className="text-white font-semibold">
                 {completedCompetencies} of {totalCompetencies}
               </strong>{" "}
               competencies ready for portfolio review
             </p>
-            <div className="mt-3 h-1.5 w-full rounded-full bg-white/15 overflow-hidden">
+            <div className={`${collapsed ? "mt-1" : "mt-3"} h-1.5 w-full rounded-full bg-white/15 overflow-hidden`}>
               <div
                 className="h-full rounded-full bg-purple-300 transition-all duration-300"
                 style={{ width: `${progressPct}%` }}
@@ -182,16 +209,44 @@ export function Sidebar({
             <button
               type="button"
               onClick={() => handleNav("portfolio")}
-              className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-purple-100 hover:text-white focus-visible:outline-2 focus-visible:outline-white whitespace-nowrap"
+              className={`mt-3 inline-flex items-center gap-1 text-xs font-medium text-purple-100 hover:text-white focus-visible:outline-2 focus-visible:outline-white whitespace-nowrap ${collapsed ? "lg:hidden" : ""}`}
             >
               <span>{copy.annualTrackLink}</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="flex items-center gap-2 px-1 text-[11px] text-purple-200/80">
+          <div className={`rounded-xl border border-white/10 bg-white/5 ${collapsed ? "p-2" : "p-3"}`}>
+            <div className="flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-purple-300 text-xs font-bold text-[#31175B]">
+                {role === "teacher" ? "MR" : role === "mentor" ? "RV" : "CO"}
+              </div>
+              <div className={`min-w-0 ${collapsed ? "lg:hidden" : ""}`}>
+                <p className="truncate text-xs font-semibold text-white">Maria Reyes</p>
+                <p className="text-[11px] capitalize text-purple-200">{role}</p>
+              </div>
+            </div>
+            <div className={`mt-3 space-y-2 ${collapsed ? "lg:hidden" : ""}`}>
+              <label className="block text-[11px] font-medium text-purple-200" htmlFor="sidebar-role">Role</label>
+              <select id="sidebar-role" value={role} onChange={(event) => onChangeRole(event.target.value as UserRole)} className="w-full rounded-lg border border-white/15 bg-[#31175B] px-2 py-1.5 text-xs text-white focus-visible:outline-2 focus-visible:outline-white">
+                <option value="teacher">{copy.roleTeacher}</option><option value="mentor">{copy.roleMentor}</option><option value="coordinator">{copy.roleCoordinator}</option>
+              </select>
+            </div>
+          </div>
+
+          <details className={`group rounded-xl border border-white/10 bg-white/5 ${collapsed ? "hidden" : ""}`}>
+            <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-xs font-semibold text-white">
+              <span className="flex items-center gap-2"><Settings className="h-3.5 w-3.5 text-purple-200" /> Settings</span><ChevronLeft className="h-3.5 w-3.5 rotate-[-90deg] text-purple-200 transition-transform group-open:rotate-90" />
+            </summary>
+            <div className="space-y-3 border-t border-white/10 px-3 py-3">
+              <button type="button" onClick={onToggleLowDataMode} className="flex w-full items-center justify-between text-left text-xs text-purple-100 hover:text-white"><span>Low-data mode</span><span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px]">{lowDataMode ? "On" : "Off"}</span></button>
+              <div><p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-purple-200"><Globe className="h-3.5 w-3.5" /> Language</p><select value={language} onChange={(event) => onChangeLanguage(event.target.value as BansayLanguage)} className="w-full rounded-lg border border-white/15 bg-[#31175B] px-2 py-1.5 text-xs text-white focus-visible:outline-2 focus-visible:outline-white"><option value="en">English</option><option value="fil">Filipino</option><option value="ceb">Cebuano</option></select></div>
+            </div>
+          </details>
+
+          <div className={`flex items-center gap-2 px-1 text-[11px] text-purple-200/80 ${collapsed ? "justify-center" : ""}`}>
             <Lock className="w-3.5 h-3.5 shrink-0" />
-            <span>{copy.privacyNote}</span>
+            <span className={collapsed ? "lg:sr-only" : ""}>{copy.privacyNote}</span>
           </div>
         </div>
       </aside>
