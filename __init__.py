@@ -1,1 +1,0 @@
-"""BANSAY teaching rehearsal prototype."""
