@@ -61,6 +61,7 @@ export function CohortOversight({
   const [isDrafting, setIsDrafting] = useState(false);
   const [mentorError, setMentorError] = useState<string | null>(null);
   const [mentorSavedBanner, setMentorSavedBanner] = useState<string | null>(null);
+  const [demoNotice, setDemoNotice] = useState(false);
 
   // Coordinator hours tracking
   const [loggedMentorMinutes, setLoggedMentorMinutes] = useState(192);
@@ -107,6 +108,8 @@ export function CohortOversight({
       if (!response.ok) {
         throw new Error(data.error || "Unable to draft coaching note.");
       }
+
+      setDemoNotice(Boolean(data.demo));
 
       setFocusedGap(data.focusedGap || "");
       setTeachingMove(data.teachingMove || "");
@@ -197,6 +200,12 @@ export function CohortOversight({
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-900 flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
             <span>{mentorSavedBanner}</span>
+          </div>
+        )}
+
+        {demoNotice && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+            Demo mode · This coaching draft is a local sample. Add an OpenRouter key to generate live mentor assistance.
           </div>
         )}
 

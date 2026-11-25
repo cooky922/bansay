@@ -7,10 +7,10 @@ preparation, AI student rehearsal, mentor feedback, and CPD evidence tracking.
 
 ## Run locally
 
-Prerequisites: Node.js 20+ and a Gemini API key.
+Prerequisite: Node.js 20+. An OpenRouter API key is optional for the built-in demo.
 
 1. Install dependencies with `npm install`.
-2. Copy `.env.example` to `.env.local` and set `GEMINI_API_KEY`.
+2. Optionally copy `.env.example` to `.env` and set `OPENROUTER_API_KEY` for live AI responses.
 3. Start the development server with `npm run dev`.
 4. Open `http://localhost:3000`.
 
@@ -34,7 +34,7 @@ check the project.
 │   ├── App.tsx                # Application state and view composition
 │   ├── index.css              # Global styles and Tailwind imports
 │   └── main.tsx               # React entry point
-├── server.ts                  # Express API and Gemini-powered endpoints
+├── server.ts                  # Express API and OpenRouter-powered endpoints
 ├── index.html                 # Vite HTML shell
 ├── vite.config.ts             # Vite, React, and Tailwind configuration
 ├── package.json               # Scripts and dependencies
@@ -43,7 +43,7 @@ check the project.
 
 ## API endpoints
 
-The Express server exposes three Gemini-backed endpoints:
+The Express server exposes three OpenRouter-backed endpoints:
 
 - `POST /api/bansay/generate-support` creates specialty bridges, misconception
   alerts, activities, and rehearsal prompts.
@@ -53,3 +53,10 @@ The Express server exposes three Gemini-backed endpoints:
 The browser stores working cases, library saves, evidence records, and
 low-data-mode preference in local storage. Demo content is defined in
 `src/data/bansayData.ts`.
+
+## Demo mode
+
+When `OPENROUTER_API_KEY` is not configured, BANSAY returns clearly marked local
+sample guidance for lesson support, learner rehearsal, and mentor feedback.
+This makes the complete teacher-to-mentor flow usable in demos without an API
+key. Configure the key to replace those samples with OpenRouter responses.

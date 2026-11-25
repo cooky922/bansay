@@ -80,6 +80,7 @@ export function LessonPrepStudio({
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [demoMode, setDemoMode] = useState(false);
   const [baselineDraft, setBaselineDraft] = useState(activeCase.baselineExplanation);
   const [baselineSkipped, setBaselineSkipped] = useState(false);
 
@@ -146,6 +147,7 @@ export function LessonPrepStudio({
         throw new Error(data.error || "Unable to generate lesson support right now.");
       }
 
+      setDemoMode(Boolean((data as { demo?: boolean }).demo));
       const generated = data as GeneratedLessonSupport;
       const created: LessonCase = {
         id: `case-${Date.now()}`,
@@ -315,6 +317,7 @@ export function LessonPrepStudio({
               onSelectCase(e.target.value);
               setBaselineDraft("");
               setBaselineSkipped(false);
+              setDemoMode(false);
             }}
             className="text-xs font-medium text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-1.5 max-w-xs truncate focus-visible:outline-2 focus-visible:outline-violet-600"
           >
@@ -634,6 +637,11 @@ export function LessonPrepStudio({
                   {copy.step2Title}
                 </h1>
                 <p className="text-sm text-slate-600 mt-1">{activeCase.topic}</p>
+                {demoMode && (
+                  <p className="mt-2 inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
+                    Demo mode · Sample coaching guidance is active until an OpenRouter key is configured.
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center gap-2 shrink-0">

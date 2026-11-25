@@ -49,6 +49,7 @@ export function RehearsalReview({
   const [isSending, setIsSending] = useState(false);
   const [rehearsalError, setRehearsalError] = useState<string | null>(null);
   const [submissionNotice, setSubmissionNotice] = useState<string | null>(null);
+  const [demoNotice, setDemoNotice] = useState(false);
 
   // Scenario 2 state
   const [revisionDraft, setRevisionDraft] = useState(activeCase.teacherRevision);
@@ -111,6 +112,8 @@ export function RehearsalReview({
       if (!response.ok) {
         throw new Error(data.error || "Simulated learner could not respond.");
       }
+
+      setDemoNotice(Boolean(data.demo));
 
       const studentReply: RehearsalMessage = {
         id: `msg-s-${Date.now()}`,
@@ -254,6 +257,12 @@ export function RehearsalReview({
               <X className="w-4 h-4" />
             </button>
           </div>
+        </div>
+      )}
+
+      {demoNotice && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+          Demo mode · This simulated learner reply is a local sample response. Add an OpenRouter key to use live AI rehearsal.
         </div>
       )}
 
