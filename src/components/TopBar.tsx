@@ -5,14 +5,12 @@ import { UI_COPY } from "../data/bansayData";
 interface TopBarProps {
   language: BansayLanguage;
   lowDataMode: boolean;
-  cachedCount: number;
   onOpenMobileMenu: () => void;
 }
 
 export function TopBar({
   language,
   lowDataMode,
-  cachedCount,
   onOpenMobileMenu,
 }: TopBarProps) {
   const copy = UI_COPY[language];
@@ -42,10 +40,6 @@ export function TopBar({
           </div>
 
         </div>
-
-        <p className="hidden sm:block text-xs text-slate-500 tabular-nums whitespace-nowrap">
-          {copy.offlineCacheReady} · {cachedCount} lessons saved
-        </p>
       </div>
     </header>
   );

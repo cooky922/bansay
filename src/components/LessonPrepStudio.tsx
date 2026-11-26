@@ -8,6 +8,7 @@ import {
   Download,
   FlaskConical,
   ImagePlus,
+  Info,
   Lightbulb,
   Loader2,
   Lock,
@@ -25,6 +26,7 @@ import {
   TEACHER_MAJORS,
   UI_COPY,
 } from "../data/bansayData";
+import type { TeacherProfileDraft } from "./SessionStartFlow";
 
 interface LessonPrepStudioProps {
   language: BansayLanguage;
@@ -36,15 +38,80 @@ interface LessonPrepStudioProps {
   onUpdateActiveCase: (updated: LessonCase) => void;
   onGoToRehearsal: () => void;
   onNotify: (message: string) => void;
+  teacherProfile: TeacherProfileDraft;
 }
 
 type SupportTab = "bridge" | "misconceptions" | "activity";
+type IntakeDraft = {
+  subject: SubjectName;
+  gradeLevel: string;
+  topic: string;
+  classDate: string;
+  baselineFirst: boolean;
+  baselineExplanation: string;
+  careerStage: "1" | "2" | "3" | "4";
+};
 
 function computeDaysUntil(dateStr: string): number {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   const target = new Date(dateStr + "T00:00:00");
   return Math.round((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function WorkspaceLessonIntake({
+  language,
+  isGenerating,
+  error,
+  onBuild,
+}: {
+  language: BansayLanguage;
+  isGenerating: boolean;
+  error: string | null;
+  onBuild: (draft: IntakeDraft) => void;
+}) {
+  const [subject, setSubject] = useState<SubjectName>("Science");
+  const [gradeLevel, setGradeLevel] = useState("Grade 7");
+  const [topic, setTopic] = useState(DEPED_TOPIC_PRESETS.Science[0].topic);
+  const [customTopic, setCustomTopic] = useState(false);
+  const [classDate, setClassDate] = useState("");
+  const [baselineFirst, setBaselineFirst] = useState(false);
+  const [baselineExplanation, setBaselineExplanation] = useState("");
+  const [careerStage, setCareerStage] = useState<"1" | "2" | "3" | "4">("2");
+  const presets = DEPED_TOPIC_PRESETS[subject].filter((item) => item.gradeLevel === gradeLevel);
+  const canBuild = Boolean(topic.trim() && (!baselineFirst || baselineExplanation.trim()));
+
+  const changeSubject = (nextSubject: SubjectName) => {
+    const first = DEPED_TOPIC_PRESETS[nextSubject][0];
+    setSubject(nextSubject);
+    setGradeLevel(first.gradeLevel);
+    setTopic(first.topic);
+    setCustomTopic(false);
+  };
+  const changeGrade = (nextGrade: string) => {
+    setGradeLevel(nextGrade);
+    const first = DEPED_TOPIC_PRESETS[subject].find((item) => item.gradeLevel === nextGrade);
+    if (first && !customTopic) setTopic(first.topic);
+  };
+
+  return (
+    <section className="max-w-4xl rounded-2xl border border-slate-200 bg-white p-5 sm:p-8">
+      <h1 className="font-display text-2xl font-bold text-slate-900">Tell us what you are teaching</h1>
+      <div className="mt-6 space-y-5">
+        <div className="grid gap-3 sm:grid-cols-3">
+          {(["Science", "Mathematics", "English"] as SubjectName[]).map((item) => <button type="button" key={item} onClick={() => changeSubject(item)} className={`rounded-xl border p-4 text-left text-sm font-semibold ${subject === item ? "border-violet-700 bg-violet-50 text-violet-950 ring-1 ring-violet-700" : "border-slate-200 text-slate-700 hover:border-violet-300"}`}>{item}</button>)}
+        </div>
+        <div className="grid gap-3 sm:grid-cols-[7.5rem_minmax(0,1fr)]">
+          <label className="text-sm font-medium text-slate-700">Grade level<select value={gradeLevel} onChange={(event) => changeGrade(event.target.value)} className="input">{["Grade 7", "Grade 8", "Grade 9", "Grade 10"].map((item) => <option key={item}>{item}</option>)}</select></label>
+          <div className="text-sm font-medium text-slate-700"><div className="mb-0.5 flex items-center justify-between gap-3"><label htmlFor="deped-topic">DepEd topic</label><button type="button" onClick={() => { const next = !customTopic; setCustomTopic(next); if (next) setTopic(""); else { const first = DEPED_TOPIC_PRESETS[subject].find((item) => item.gradeLevel === gradeLevel); if (first) setTopic(first.topic); } }} className="text-sm font-semibold text-violet-700 hover:text-violet-900">{customTopic ? "Use a preset" : "Custom topic"}</button></div>{customTopic ? <input id="deped-topic" value={topic} onChange={(event) => setTopic(event.target.value)} className="input" placeholder="Your lesson topic" /> : <select id="deped-topic" value={topic} onChange={(event) => setTopic(event.target.value)} className="input" disabled={!presets.length}><option value="">{presets.length ? "Select a DepEd preset" : "No preset for this grade"}</option>{presets.map((item) => <option key={item.topic} value={item.topic}>{item.topic}</option>)}</select>}</div>
+          <label className="text-sm font-medium text-slate-700 sm:col-span-2">Class date<input type="date" value={classDate} onChange={(event) => setClassDate(event.target.value)} className="input" /></label>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2"><div><p className="flex items-center gap-1 text-sm font-medium text-slate-700">Private self-calibration<button type="button" title="Sets the amount of support for this lesson. It does not rate you." aria-label="About private self-calibration" className="text-slate-400 hover:text-violet-700"><Info className="h-3.5 w-3.5" /></button></p><div className="relative mt-1.5 grid grid-cols-4 rounded-xl bg-slate-100 p-1"><span className="absolute inset-y-1 rounded-lg bg-violet-700 shadow-sm transition-transform duration-200" style={{ width: "calc(25% - 0.25rem)", transform: `translateX(${(Number(careerStage) - 1) * 100}%)` }} />{(["1", "2", "3", "4"] as const).map((stage) => <button type="button" key={stage} onClick={() => setCareerStage(stage)} className={`relative z-10 rounded-lg px-1 py-2 text-xs font-semibold ${careerStage === stage ? "text-white" : "text-slate-500"}`} aria-pressed={careerStage === stage}>{stage}</button>)}</div><p className="mt-1 text-xs text-slate-500">{({ "1": "Beginning", "2": "Proficient", "3": "Highly Proficient", "4": "Distinguished" } as const)[careerStage]}</p></div><div className="rounded-xl border border-violet-100 bg-violet-50/50 p-4"><div className="flex items-center gap-2 text-sm font-semibold text-slate-800"><input id="baseline-first" type="checkbox" checked={baselineFirst} onChange={(event) => setBaselineFirst(event.target.checked)} /><label htmlFor="baseline-first">Baseline First</label><button type="button" title="Lets you record your first explanation before reading the AI Draft." aria-label="About Baseline First" className="text-slate-400 hover:text-violet-700"><Info className="h-3.5 w-3.5" /></button></div><p className="mt-1 text-sm text-slate-600">Record your explanation before reading the AI Draft.</p>{baselineFirst && <textarea rows={3} value={baselineExplanation} onChange={(event) => setBaselineExplanation(event.target.value)} className="input mt-3" placeholder="Write your 1–2 sentence explanation..." />}</div></div>
+        {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
+        <button type="button" disabled={!canBuild || isGenerating} onClick={() => onBuild({ subject, gradeLevel, topic, classDate, baselineFirst, baselineExplanation: baselineExplanation.trim(), careerStage })} className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-800 disabled:opacity-50">{isGenerating ? "Building AI Draft…" : "Build AI Draft"}</button>
+      </div>
+    </section>
+  );
 }
 
 export function LessonPrepStudio({
@@ -57,9 +124,10 @@ export function LessonPrepStudio({
   onUpdateActiveCase,
   onGoToRehearsal,
   onNotify,
+  teacherProfile,
 }: LessonPrepStudioProps) {
   const copy = UI_COPY[language];
-  const [step, setStep] = useState<1 | 2>(2);
+  const [step, setStep] = useState<1 | 2>(1);
   const [supportTab, setSupportTab] = useState<SupportTab>("bridge");
 
   // Form state for Step 1
@@ -68,7 +136,7 @@ export function LessonPrepStudio({
   const [topic, setTopic] = useState(activeCase.topic);
   const [customTopic, setCustomTopic] = useState("");
   const [useCustomTopic, setUseCustomTopic] = useState(false);
-  const [teacherMajor, setTeacherMajor] = useState(activeCase.teacherMajor);
+  const [teacherMajor, setTeacherMajor] = useState(teacherProfile.teacherMajor);
   const [classDate, setClassDate] = useState(activeCase.classDate);
   const [startingMaterial, setStartingMaterial] = useState(activeCase.startingMaterial);
   const [baselineFirst, setBaselineFirst] = useState(activeCase.baselineFirst);
@@ -118,9 +186,13 @@ export function LessonPrepStudio({
     reader.readAsDataURL(file);
   };
 
-  const handleBuildSupport = async (e: FormEvent) => {
-    e.preventDefault();
-    const chosenTopic = useCustomTopic ? customTopic.trim() : topic.trim();
+  const handleBuildSupport = async (e?: FormEvent, draft?: IntakeDraft) => {
+    e?.preventDefault();
+    const chosenSubject = draft?.subject || subject;
+    const chosenGradeLevel = draft?.gradeLevel || gradeLevel;
+    const chosenTeacherMajor = teacherMajor;
+    const chosenClassDate = draft?.classDate ?? classDate;
+    const chosenTopic = draft?.topic.trim() || (useCustomTopic ? customTopic.trim() : topic.trim());
     if (!chosenTopic) {
       setApiError("Please select or enter an upcoming DepEd lesson topic.");
       return;
@@ -134,10 +206,10 @@ export function LessonPrepStudio({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          subject,
-          gradeLevel,
+          subject: chosenSubject,
+          gradeLevel: chosenGradeLevel,
           topic: chosenTopic,
-          teacherMajor,
+          teacherMajor: chosenTeacherMajor,
           language,
           startingMaterial,
           imageData: uploadedBase64 || undefined,
@@ -153,18 +225,19 @@ export function LessonPrepStudio({
       const generated = data as GeneratedLessonSupport;
       const created: LessonCase = {
         id: `case-${Date.now()}`,
-        subject,
-        gradeLevel,
+        subject: chosenSubject,
+        gradeLevel: chosenGradeLevel,
         topic: chosenTopic,
-        teacherName: "Maria Reyes",
-        teacherMajor,
-        classDate,
+        teacherName: teacherProfile.teacherName,
+        teacherMajor: chosenTeacherMajor,
+        classDate: chosenClassDate,
+        careerStage: draft?.careerStage,
         submittedAt: new Date().toISOString().slice(0, 10),
         language,
         startingMaterial,
         uploadedImagePreview: uploadedPreview,
-        baselineFirst,
-        baselineExplanation: "",
+        baselineFirst: draft?.baselineFirst ?? baselineFirst,
+        baselineExplanation: draft?.baselineExplanation ?? "",
         submissionFormat: lowDataMode ? "offline-fallback" : "live-ai",
         support: generated,
         rehearsalMessages: [
@@ -179,15 +252,10 @@ export function LessonPrepStudio({
           },
         ],
         mentorReview: {
-          mentorName:
-            subject === "Mathematics"
-              ? "Lourdes Tan"
-              : subject === "English"
-              ? "Grace Bautista"
-              : "Ramon Villamor",
-          mentorAffiliation: `MSU-IIT ${subject} Specialist`,
+          mentorName: "Mentor assignment pending",
+          mentorAffiliation: "Routed after rehearsal submission",
           backupMentorName: "Elena Villanueva",
-          languagesCovered: ["en", "fil", "ceb"],
+          languagesCovered: ["en", "fil"],
           reviewedAt: "Pending submission",
           focusedGap: "",
           teachingMove: "",
@@ -280,6 +348,17 @@ export function LessonPrepStudio({
     !activeCase.baselineExplanation.trim() &&
     !baselineSkipped;
 
+  if (step === 1) {
+    return (
+      <WorkspaceLessonIntake
+        language={language}
+        isGenerating={isGenerating}
+        error={apiError}
+        onBuild={(draft) => void handleBuildSupport(undefined, draft)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       {/* Compact workflow and current lesson context */}
@@ -292,7 +371,7 @@ export function LessonPrepStudio({
             type="button"
             onClick={() => setStep(1)}
             className={`px-3.5 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-violet-600 ${
-              step === 1
+              (step as 1 | 2) === 1
                 ? "bg-white text-violet-950 shadow-xs font-semibold"
                 : "text-slate-600 hover:text-slate-900"
             }`}
@@ -337,7 +416,7 @@ export function LessonPrepStudio({
         </div></div>
       </div>
 
-      {step === 1 ? (
+      {(step as 1 | 2) === 1 ? (
         <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-8 max-w-4xl">
           <p className="text-xs font-medium text-violet-700 mb-1">
             {copy.step1Kicker}
@@ -638,6 +717,9 @@ export function LessonPrepStudio({
                 </div>
                 <h1 className="font-display text-xl sm:text-2xl font-bold text-slate-900 tracking-tight text-balance">{activeCase.topic}</h1>
                 <p className="text-sm text-slate-600 mt-1">{copy.step2Title}</p>
+                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                  <strong>AI Draft (Unverified)</strong> · Use this for private study and rehearsal. Cross-check safety steps and formulas before live classroom use.
+                </div>
                 {demoMode && (
                   <p className="mt-2 inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
                     Demo mode · Sample coaching guidance is active until an OpenRouter key is configured.

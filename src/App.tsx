@@ -6,6 +6,7 @@ import { LessonPrepStudio } from "./components/LessonPrepStudio";
 import { RehearsalReview } from "./components/RehearsalReview";
 import { CpdPortfolio } from "./components/CpdPortfolio";
 import { CohortOversight } from "./components/CohortOversight";
+import { SessionStartFlow, type TeacherProfileDraft } from "./components/SessionStartFlow";
 import type {
   ActiveSection,
   BansayLanguage,
@@ -41,8 +42,10 @@ function loadStored<T>(key: string, fallback: T): T {
 
 export default function App() {
   const [language, setLanguage] = useState<BansayLanguage>("en");
+  const [teacherProfile, setTeacherProfile] = useState<TeacherProfileDraft | null>(null);
   const [role, setRole] = useState<UserRole>("teacher");
   const [activeSection, setActiveSection] = useState<ActiveSection>("prep");
+  const [hasEstablishedLesson, setHasEstablishedLesson] = useState(false);
   const [lowDataMode, setLowDataMode] = useState<boolean>(() =>
     loadStored("bansay_low_data_v1", false)
   );
@@ -151,24 +154,23 @@ export default function App() {
     setToast(`Language changed to ${nextLang === "en" ? "English" : nextLang === "fil" ? "Filipino" : "Cebuano"}`);
   };
 
-  const handleRoleChange = (nextRole: UserRole) => {
-    setRole(nextRole);
-    if (nextRole === "mentor" || nextRole === "coordinator") {
-      setActiveSection("cohort");
-    } else if (activeSection === "cohort") {
-      setActiveSection("prep");
-    }
-    setToast(`Viewing as ${nextRole}`);
-  };
-
   const activeCase = useMemo(
     () => cases.find((c) => c.id === activeCaseId) || cases[0],
     [cases, activeCaseId]
   );
 
+  const handleSelectSection = (section: ActiveSection) => {
+    if (section === "rehearsal" && !hasEstablishedLesson) {
+      setActiveSection("rehearsal");
+      return;
+    }
+    setActiveSection(section);
+  };
+
   const handleCreateOrUpdateCase = (newCase: LessonCase) => {
     setCases((prev) => [newCase, ...prev]);
     setActiveCaseId(newCase.id);
+    setHasEstablishedLesson(true);
   };
 
   const handleUpdateCase = (updated: LessonCase) => {
@@ -227,7 +229,19 @@ export default function App() {
   const pendingReviewsCount = cases.filter(
     (c) => c.mentorReview.status === "pending"
   ).length;
-  const cachedCount = cases.filter((c) => c.cachedOffline).length;
+  if (!teacherProfile) {
+    return (
+      <SessionStartFlow
+        onComplete={(profile) => {
+          setLanguage(profile.language);
+          setLowDataMode(profile.lowDataMode);
+          setTeacherProfile(profile);
+          setRole(profile.role);
+          setActiveSection(profile.role === "teacher" ? "prep" : "cohort");
+        }}
+      />
+    );
+  }
 
   return (
     <div
@@ -237,7 +251,7 @@ export default function App() {
     >
       <Sidebar
         activeSection={activeSection}
-        onSelectSection={setActiveSection}
+        onSelectSection={handleSelectSection}
         language={language}
         role={role}
         completedCompetencies={completedCompetencies}
@@ -253,14 +267,19 @@ export default function App() {
           setToast(lowDataMode ? "Standard data mode enabled" : "Low-data mode enabled");
         }}
         onChangeLanguage={handleLanguageChange}
-        onChangeRole={handleRoleChange}
+        teacherName={teacherProfile.teacherName}
+        onLogout={() => {
+          setTeacherProfile(null);
+          setRole("teacher");
+          setActiveSection("prep");
+          setMobileMenuOpen(false);
+        }}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar
           language={language}
           lowDataMode={lowDataMode}
-          cachedCount={cachedCount}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
         />
 
@@ -275,8 +294,9 @@ export default function App() {
                 onSelectCase={setActiveCaseId}
                 onCreateOrUpdateCase={handleCreateOrUpdateCase}
                 onUpdateActiveCase={handleUpdateCase}
-                onGoToRehearsal={() => setActiveSection("rehearsal")}
+                onGoToRehearsal={() => handleSelectSection("rehearsal")}
                 onNotify={setToast}
+                teacherProfile={teacherProfile}
               />
             )}
 
@@ -294,6 +314,8 @@ export default function App() {
                 mentorRecording={mentorVideos[activeCase.id]}
                 onStoreMentorVideo={handleStoreMentorVideo}
                 onClearMentorVideo={handleClearMentorVideo}
+                isLessonReady={hasEstablishedLesson}
+                onPlanLesson={() => setActiveSection("prep")}
               />
             )}
 

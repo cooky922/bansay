@@ -37,6 +37,14 @@ interface RehearsalReviewProps {
   mentorRecording?: LocalMentorRecording;
   onStoreMentorVideo: (caseId: string, recording: LocalMentorRecording) => void;
   onClearMentorVideo: (caseId: string) => void;
+  isLessonReady: boolean;
+  onPlanLesson: () => void;
+}
+
+function mentorForSubject(subject: SubjectName) {
+  if (subject === "Mathematics") return { name: "Lourdes Tan", affiliation: "MSU-IIT Mathematics Education" };
+  if (subject === "English") return { name: "Grace Bautista", affiliation: "MSU-IIT English Education" };
+  return { name: "Ramon Villamor", affiliation: "MSU-IIT Science Education" };
 }
 
 export function RehearsalReview({
@@ -49,6 +57,8 @@ export function RehearsalReview({
   mentorRecording,
   onStoreMentorVideo,
   onClearMentorVideo,
+  isLessonReady,
+  onPlanLesson,
 }: RehearsalReviewProps) {
   const copy = UI_COPY[language];
   const [scenarioTab, setScenarioTab] = useState<1 | 2>(
@@ -82,6 +92,7 @@ export function RehearsalReview({
   const videoChunksRef = useRef<Blob[]>([]);
   const recognitionRef = useRef<any>(null);
   const transcriptRef = useRef("");
+  const conversationRef = useRef<HTMLDivElement | null>(null);
   const recordedVideoUrl = voiceUrl || mentorRecording?.url;
   const recordedKind = voiceUrl ? recordingKind : mentorRecording?.kind;
 
@@ -106,6 +117,13 @@ export function RehearsalReview({
       recognitionRef.current?.stop?.();
     };
   }, []);
+
+  useEffect(() => {
+    const conversation = conversationRef.current;
+    if (conversation) {
+      conversation.scrollTo({ top: conversation.scrollHeight, behavior: "smooth" });
+    }
+  }, [activeCase.rehearsalMessages.length, isSending]);
 
   const stopRecording = () => {
     mediaRecorderRef.current?.stop();
@@ -191,8 +209,9 @@ export function RehearsalReview({
 
   const handleSendToStudent = async (e: FormEvent) => {
     e.preventDefault();
-    if (!teacherInput.trim()) return;
+    if (!teacherInput.trim() || isSending) return;
 
+    if (isRecording) stopRecording();
     setRehearsalError(null);
     const nowTime = new Date().toLocaleTimeString([], {
       hour: "2-digit",
@@ -240,6 +259,13 @@ export function RehearsalReview({
 
       setDemoNotice(Boolean(data.demo));
 
+      if (data.ended) {
+        setSubmissionNotice(
+          "This practice exchange has reached its question limit. Review your explanation or send it for mentor feedback."
+        );
+        return;
+      }
+
       const studentReply: RehearsalMessage = {
         id: `msg-s-${Date.now()}`,
         sender: "student",
@@ -266,16 +292,19 @@ export function RehearsalReview({
   };
 
   const handleSubmitForMentorReview = () => {
+    const mentor = mentorForSubject(activeCase.subject);
     onUpdateCase({
       ...activeCase,
       mentorReview: {
         ...activeCase.mentorReview,
+        mentorName: mentor.name,
+        mentorAffiliation: mentor.affiliation,
         status: "pending",
         reviewedAt: "Submitted · Target within 2 school days",
       },
     });
     setSubmissionNotice(
-      `Submitted privately to ${activeCase.mentorReview.mentorName}. You can switch "Viewing as" to Subject Mentor at the top right to review and return feedback immediately.`
+      `Your rehearsal has been routed privately to ${mentor.name} for Concept Pack and transcript review.`
     );
   };
 
@@ -336,22 +365,35 @@ export function RehearsalReview({
     { weekday: "short", day: "numeric", month: "short" }
   );
 
-  const hasTeacherTurn = activeCase.rehearsalMessages.some((m) => m.sender === "teacher");
+  const hasCompletedOpeningExchange = activeCase.rehearsalMessages.length >= 3;
+  const rehearsalStatus = activeCase.mentorReview.status === "pending" && activeCase.mentorReview.reviewedAt.startsWith("Submitted")
+    ? "Waiting for mentor"
+    : activeCase.mentorReview.status === "returned"
+      ? "Mentor correction ready"
+      : "Private practice";
+
+  if (!isLessonReady) {
+    return (
+      <section className="max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
+        <h1 className="font-display text-2xl font-bold text-slate-900">Plan a lesson first</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-600">Choose a subject, grade level, topic, and class date in Lesson Prep, then build the AI Draft before starting rehearsal.</p>
+        <button type="button" onClick={onPlanLesson} className="mt-6 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-800">Go to Lesson Prep</button>
+      </section>
+    );
+  }
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold text-violet-700 mb-1">
-            {copy.rehearsalKicker}
-          </p>
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight text-balance">
             {copy.rehearsalTitle}
           </h1>
-          <p className="text-sm text-slate-600 mt-1">{copy.rehearsalSubtitle}</p>
         </div>
 
+        <div className="flex items-center gap-2">
+        <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-900">{rehearsalStatus}</span>
         <button
           type="button"
           onClick={() => setLibraryOpen(true)}
@@ -360,19 +402,13 @@ export function RehearsalReview({
           <BookMarked className="w-4 h-4 text-violet-700" />
           <span>{copy.openPeerLibraryBtn}</span>
         </button>
+        </div>
       </div>
 
       {submissionNotice && (
         <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 flex items-center justify-between gap-4">
           <p className="text-xs text-violet-950 leading-relaxed">{submissionNotice}</p>
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={onSwitchToMentorQueue}
-              className="px-3 py-1.5 rounded-lg bg-violet-700 text-white text-xs font-semibold hover:bg-violet-800 whitespace-nowrap"
-            >
-              View in Mentor Queue
-            </button>
             <button
               type="button"
               onClick={() => setSubmissionNotice(null)}
@@ -444,7 +480,7 @@ export function RehearsalReview({
               </div>
 
               {/* Conversation Thread */}
-              <div className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
+              <div ref={conversationRef} className="space-y-3 max-h-[380px] overflow-y-auto pr-1">
                 {activeCase.rehearsalMessages.map((msg) => {
                   const isStudent = msg.sender === "student";
                   return (
@@ -523,7 +559,7 @@ export function RehearsalReview({
                   <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3.5 space-y-2.5">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-xs font-semibold text-violet-950">
-                        {isRecording ? `Recording ${recordingKind === "video" ? "video" : "voice"} response…` : `${recordedKind === "video" ? "Video" : "Voice"} response ready for mentor review`}
+                        {isRecording ? `Recording ${recordingKind === "video" ? "video" : "voice"} response…` : `${recordedKind === "video" ? "Video" : "Voice"} response ready for private self-review`}
                       </p>
                       {recordedVideoUrl && !isRecording && (
                         <button
@@ -538,7 +574,7 @@ export function RehearsalReview({
                     </div>
                     {recordedVideoUrl && (recordedKind === "video" ? <video controls playsInline src={recordedVideoUrl} className="aspect-video w-full rounded-lg bg-slate-950" /> : <audio controls src={recordedVideoUrl} className="h-9 w-full" />)}
                     <p className="text-xs text-slate-600 leading-relaxed">
-                      This {recordedKind === "video" ? "video" : "voice recording"} stays in this browser session for your human mentor&apos;s review. Only the transcript below is sent to the AI learner.
+                      This {recordedKind === "video" ? "video" : "voice recording"} stays in this browser session for private self-review. Your confirmed text transcript is sent for mentor review.
                     </p>
                     {voiceTranscript && (
                       <p className="rounded-lg bg-white/80 px-3 py-2 text-xs text-slate-700 leading-relaxed">
@@ -553,6 +589,12 @@ export function RehearsalReview({
                   rows={3}
                   value={teacherInput}
                   onChange={(e) => setTeacherInput(e.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void handleSendToStudent(event as unknown as FormEvent);
+                    }
+                  }}
                   placeholder={
                     isRecording || recordedVideoUrl
                       ? "Your voice transcript appears here. You can correct it before sending..."
@@ -562,11 +604,6 @@ export function RehearsalReview({
                 />
 
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-xs text-slate-500 flex items-center gap-1.5">
-                    <Lock className="w-3.5 h-3.5" />
-                    <span>Private review · Visible only to your assigned mentor</span>
-                  </p>
-
                   <div className="flex items-center gap-2">
                     <button
                       type="submit"
@@ -580,11 +617,11 @@ export function RehearsalReview({
                     <button
                       type="button"
                       onClick={handleSubmitForMentorReview}
-                      disabled={!hasTeacherTurn && !activeCase.baselineExplanation}
+                      disabled={!hasCompletedOpeningExchange}
                       className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-700 hover:bg-violet-800 disabled:opacity-50 text-white text-xs font-semibold transition-colors whitespace-nowrap"
                     >
                       <UserCheck className="w-3.5 h-3.5" />
-                      <span>{copy.submitMentorBtn}</span>
+                      <span>{hasCompletedOpeningExchange ? copy.submitMentorBtn : "Complete the opening exchange"}</span>
                     </button>
                   </div>
                 </div>

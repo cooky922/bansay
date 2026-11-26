@@ -32,7 +32,8 @@ interface SidebarProps {
   lowDataMode: boolean;
   onToggleLowDataMode: () => void;
   onChangeLanguage: (language: BansayLanguage) => void;
-  onChangeRole: (role: UserRole) => void;
+  teacherName: string;
+  onLogout: () => void;
 }
 
 export function Sidebar({
@@ -50,7 +51,8 @@ export function Sidebar({
   lowDataMode,
   onToggleLowDataMode,
   onChangeLanguage,
-  onChangeRole,
+  teacherName,
+  onLogout,
 }: SidebarProps) {
   const copy = UI_COPY[language];
   const progressPct = Math.min(100, Math.round((completedCompetencies / totalCompetencies) * 100));
@@ -60,28 +62,21 @@ export function Sidebar({
     label: string;
     icon: typeof Sparkles;
     hint?: string;
+    detail: string;
   }> = [
-    {
-      id: "prep",
-      label: copy.navPrep,
-      icon: Sparkles,
-    },
-    {
-      id: "rehearsal",
-      label: copy.navRehearsal,
-      icon: MessageSquare,
-    },
-    {
-      id: "portfolio",
-      label: copy.navPortfolio,
-      icon: Award,
-    },
-    {
-      id: "cohort",
-      label: role === "mentor" ? "Mentor Review Queue" : copy.navCohort,
-      icon: Users,
-      hint: role === "mentor" && pendingReviewsCount > 0 ? `${pendingReviewsCount}` : undefined,
-    },
+    ...(role === "teacher" ? [
+      { id: "prep" as ActiveSection, label: "Lesson Prep Studio", icon: Sparkles, detail: "Intake, baseline, Concept Pack" },
+      { id: "rehearsal" as ActiveSection, label: "Rehearsal & Review", icon: MessageSquare, detail: "Practice, correction, fresh case" },
+      { id: "cohort" as ActiveSection, label: "Peer Library", icon: Users, detail: "Mentor-verified packs" },
+      { id: "portfolio" as ActiveSection, label: "Teaching Portfolio", icon: Award, detail: "Private evidence and annual track" },
+    ] : role === "mentor" ? [
+      { id: "cohort" as ActiveSection, label: "Review Queue", icon: Users, detail: "Initial, fresh-case, post-class", hint: pendingReviewsCount ? `${pendingReviewsCount}` : undefined },
+      { id: "portfolio" as ActiveSection, label: "Verified Packs", icon: Award, detail: "Packs you edited or badged" },
+      { id: "prep" as ActiveSection, label: "Availability", icon: Settings, detail: "Hours, languages, backup coverage" },
+    ] : [
+      { id: "cohort" as ActiveSection, label: "Cohort Summary", icon: Users, detail: "Anonymous completion and demand" },
+      { id: "prep" as ActiveSection, label: "Routing & SLA", icon: Sparkles, detail: "Mentor matching and deadlines" },
+    ]),
   ];
 
   const handleNav = (id: ActiveSection) => {
@@ -100,7 +95,7 @@ export function Sidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(16rem,calc(100vw-2.5rem))] flex-col justify-between overflow-y-auto bg-[#31175B] text-white transition-[transform,width] duration-200 lg:static lg:h-auto lg:translate-x-0 lg:overflow-visible shrink-0 ${collapsed ? "lg:w-[4.5rem]" : "lg:w-64"} ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(16rem,calc(100vw-2.5rem))] flex-col justify-between overflow-y-auto bg-[#31175B] text-white transition-[transform,width] duration-200 lg:static lg:h-auto lg:translate-x-0 lg:overflow-hidden shrink-0 ${collapsed ? "lg:w-[4.5rem]" : "lg:w-64"} ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         aria-label="Primary navigation"
@@ -141,7 +136,7 @@ export function Sidebar({
           {/* Workspace Nav */}
           <div className={`pt-5 ${collapsed ? "px-2" : "px-3.5"}`}>
             <p className={`px-2.5 text-xs font-medium text-purple-200/75 mb-2 ${collapsed ? "lg:sr-only" : ""}`}>
-              {copy.workspaceLabel}
+              {role === "teacher" ? "TEACHER WORKSPACE" : role === "mentor" ? "MENTOR WORKSPACE" : "COORDINATOR / SCHOOL HEAD"}
             </p>
             <nav className="space-y-1">
               {navItems.map((item) => {
@@ -164,7 +159,7 @@ export function Sidebar({
                           isActive ? "text-[#5B21B6]" : "text-purple-200"
                         }`}
                       />
-                      <span className={`truncate ${collapsed ? "lg:sr-only" : ""}`}>{item.label}</span>
+                      <span className={`min-w-0 ${collapsed ? "lg:sr-only" : ""}`}><span className="block truncate">{item.label}</span><span className="mt-0.5 block truncate text-[10px] font-normal opacity-70">{item.detail}</span></span>
                     </span>
                     {item.hint && !collapsed && (
                       <span
@@ -219,28 +214,24 @@ export function Sidebar({
           <div className={`rounded-xl border border-white/10 bg-white/5 ${collapsed ? "p-2" : "p-3"}`}>
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-purple-300 text-xs font-bold text-[#31175B]">
-                {role === "teacher" ? "MR" : role === "mentor" ? "RV" : "CO"}
+                {teacherName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "T"}
               </div>
               <div className={`min-w-0 ${collapsed ? "lg:hidden" : ""}`}>
-                <p className="truncate text-xs font-semibold text-white">Maria Reyes</p>
+                <p className="truncate text-xs font-semibold text-white">{teacherName}</p>
                 <p className="text-[11px] capitalize text-purple-200">{role}</p>
               </div>
-            </div>
-            <div className={`mt-3 space-y-2 ${collapsed ? "lg:hidden" : ""}`}>
-              <label className="block text-[11px] font-medium text-purple-200" htmlFor="sidebar-role">Role</label>
-              <select id="sidebar-role" value={role} onChange={(event) => onChangeRole(event.target.value as UserRole)} className="w-full rounded-lg border border-white/15 bg-[#31175B] px-2 py-1.5 text-xs text-white focus-visible:outline-2 focus-visible:outline-white">
-                <option value="teacher">{copy.roleTeacher}</option><option value="mentor">{copy.roleMentor}</option><option value="coordinator">{copy.roleCoordinator}</option>
-              </select>
             </div>
           </div>
 
           <details className={`group rounded-xl border border-white/10 bg-white/5 ${collapsed ? "hidden" : ""}`}>
             <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-xs font-semibold text-white">
-              <span className="flex items-center gap-2"><Settings className="h-3.5 w-3.5 text-purple-200" /> Settings</span><ChevronLeft className="h-3.5 w-3.5 rotate-[-90deg] text-purple-200 transition-transform group-open:rotate-90" />
+              <span className="flex items-center gap-2"><Settings className="h-3.5 w-3.5 text-purple-200" /> Profile &amp; Settings</span><ChevronLeft className="h-3.5 w-3.5 rotate-[-90deg] text-purple-200 transition-transform group-open:rotate-90" />
             </summary>
             <div className="space-y-3 border-t border-white/10 px-3 py-3">
               <button type="button" onClick={onToggleLowDataMode} className="flex w-full items-center justify-between text-left text-xs text-purple-100 hover:text-white"><span>Low-data mode</span><span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px]">{lowDataMode ? "On" : "Off"}</span></button>
-              <div><p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-purple-200"><Globe className="h-3.5 w-3.5" /> Language</p><select value={language} onChange={(event) => onChangeLanguage(event.target.value as BansayLanguage)} className="w-full rounded-lg border border-white/15 bg-[#31175B] px-2 py-1.5 text-xs text-white focus-visible:outline-2 focus-visible:outline-white"><option value="en">English</option><option value="fil">Filipino</option><option value="ceb">Cebuano</option></select></div>
+              <div><p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-purple-200"><Globe className="h-3.5 w-3.5" /> Language</p><select value={language} onChange={(event) => onChangeLanguage(event.target.value as BansayLanguage)} className="w-full rounded-lg border border-white/15 bg-[#31175B] px-2 py-1.5 text-xs text-white focus-visible:outline-2 focus-visible:outline-white"><option value="en">English</option><option value="fil">Filipino</option></select></div>
+              <p className="text-[11px] leading-relaxed text-purple-200">Offline downloads, career-stage selection, media consent, and data deletion controls are managed per lesson or account.</p>
+              <button type="button" onClick={onLogout} className="w-full rounded-lg border border-white/20 px-2.5 py-2 text-left text-xs font-semibold text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white">Log out</button>
             </div>
           </details>
 
