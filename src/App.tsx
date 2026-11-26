@@ -160,7 +160,8 @@ export default function App() {
 
   const handleSelectSection = (section: ActiveSection) => {
     if (section === "rehearsal" && !hasEstablishedLesson) {
-      setActiveSection("rehearsal");
+      setActiveSection("prep");
+      setToast("Build a lesson support pack before starting rehearsal.");
       return;
     }
     setActiveSection(section);

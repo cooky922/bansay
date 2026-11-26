@@ -373,6 +373,7 @@ export function RehearsalReview({
     : activeCase.mentorReview.status === "returned"
       ? "Mentor correction ready"
       : "Private practice";
+  const freshCaseUnlocked = activeCase.freshCaseStatus !== "locked";
 
   if (!isLessonReady) {
     return (
@@ -435,7 +436,7 @@ export function RehearsalReview({
         <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-5">
           {/* Scenario Step Tabs */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
-            <div className="w-full sm:w-auto sm:min-w-[25rem]"><Tabs value={scenarioTab} onChange={setScenarioTab} label="Rehearsal scenarios" items={[{ value: 1, label: "1 · Learner rehearsal" }, { value: 2, label: "2 · Fresh case" }]} /></div>
+            <div className="w-full sm:w-auto sm:min-w-[25rem]"><Tabs value={scenarioTab} onChange={setScenarioTab} label="Rehearsal scenarios" items={[{ value: 1, label: "1 · Learner rehearsal" }, { value: 2, label: freshCaseUnlocked ? "2 · Fresh case" : "2 · Awaiting feedback", disabled: !freshCaseUnlocked }]} /></div>
 
             <button
               type="button"
