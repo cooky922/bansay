@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, GraduationCap } from "lucide-react";
 import type { BansayLanguage, UserRole } from "../types/bansay";
+import { CHED_RO_X_PROGRAMS } from "../data/chedRoXPrograms";
 
 export type TeacherProfileDraft = {
   teacherName: string;
@@ -13,43 +14,6 @@ export type TeacherProfileDraft = {
   lowDataMode: boolean;
 };
 
-const CHED_PROGRAMS = [
-  "Bachelor of Elementary Education",
-  "Bachelor of Elementary Education - Early Childhood Education",
-  "Bachelor of Elementary Education - English",
-  "Bachelor of Elementary Education - Science and Mathematics",
-  "Bachelor of Secondary Education - Biology",
-  "Bachelor of Secondary Education - Chemistry",
-  "Bachelor of Secondary Education - English",
-  "Bachelor of Secondary Education - Filipino",
-  "Bachelor of Secondary Education - Mathematics",
-  "Bachelor of Secondary Education - Mapeh",
-  "Bachelor of Secondary Education - Physics",
-  "Bachelor of Secondary Education - Science",
-  "Bachelor of Secondary Education - Social Studies",
-  "Bachelor of Secondary Education - Technology and Livelihood Education",
-  "Bachelor of Arts - English",
-  "Bachelor of Arts in Communication - Mass Communication",
-  "Bachelor of Arts in Psychology",
-  "Bachelor of Science in Business Administration - Marketing Management",
-  "Bachelor of Science in Information Technology",
-  "Bachelor of Science in Medical Technology",
-  "Bachelor of Science in Nursing",
-  "Bachelor of Science in Nutrition and Dietetics",
-  "Bachelor of Science in Pharmacy",
-  "Bachelor of Science in Physical Therapy",
-  "Doctor of Education - Educational Management",
-  "Doctor of Philosophy in Education - Curriculum Development and Instructional Design",
-  "Doctor of Philosophy in Education - Educational Leadership and Management",
-  "Doctor of Philosophy in Mathematics Education",
-  "Doctor of Philosophy in Science Education - Biology",
-  "Doctor of Philosophy in Science Education - Chemistry",
-  "Doctor of Philosophy in Science Education - Mathematics",
-  "Master of Arts in Education - English",
-  "Master of Arts in Education - Mathematics",
-  "Master of Arts in Education - Science",
-];
-
 export function SessionStartFlow({ onComplete }: { onComplete: (profile: TeacherProfileDraft) => void }) {
   const [name, setName] = useState("");
   const [degree, setDegree] = useState("");
@@ -60,7 +24,7 @@ export function SessionStartFlow({ onComplete }: { onComplete: (profile: Teacher
   const [lowDataMode, setLowDataMode] = useState(false);
   const [degreeQuery, setDegreeQuery] = useState("");
   const [degreeOpen, setDegreeOpen] = useState(false);
-  const options = useMemo(() => CHED_PROGRAMS.filter((item) => item.toLowerCase().includes(degreeQuery.toLowerCase())), [degreeQuery]);
+  const options = useMemo(() => CHED_RO_X_PROGRAMS.filter((item) => item.toLowerCase().includes(degreeQuery.toLowerCase())), [degreeQuery]);
 
   const complete = () => {
     if (!name.trim() || !degree.trim()) return;
