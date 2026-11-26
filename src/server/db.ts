@@ -1,6 +1,5 @@
 import Database from "better-sqlite3";
 import fs from "fs";
-import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
 
@@ -9,7 +8,9 @@ export type BansayDatabase = Database.Database;
 const moduleDirectory = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDirectory = path.join(moduleDirectory, "migrations");
 
-export function openDatabase(databasePath = process.env.BANSAY_DATABASE_PATH || path.join(os.homedir(), ".bansay", "data", "bansay.sqlite")): BansayDatabase {
+// Keep the default alongside the deployed app. This avoids a browser-sandboxed
+// user-profile directory while still allowing production hosts to override it.
+export function openDatabase(databasePath = process.env.BANSAY_DATABASE_PATH || path.join(process.cwd(), ".bansay", "data", "bansay.sqlite")): BansayDatabase {
   if (databasePath !== ":memory:") fs.mkdirSync(path.dirname(path.resolve(databasePath)), { recursive: true });
   const database = new Database(databasePath);
   database.pragma("foreign_keys = ON");

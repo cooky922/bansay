@@ -475,6 +475,13 @@ Create practical, plain-language coaching output written strictly in ${targetLan
     res.json(parsed);
   } catch (err) {
     const { status, message } = extractApiError(err);
+    if (status >= 500) {
+      const { subject, gradeLevel, topic, teacherMajor, language } = req.body as {
+        subject: string; gradeLevel: string; topic: string; teacherMajor: string; language: string;
+      };
+      res.json({ ...createDemoSupport({ subject, gradeLevel, topic, teacherMajor, language }), providerFallback: true });
+      return;
+    }
     res.status(status).json({ error: message });
   }
 });
@@ -599,6 +606,14 @@ Respond only as ${studentName}, the simulated learner.`;
     });
   } catch (err) {
     const { status, message } = extractApiError(err);
+    if (status >= 500) {
+      const { language, studentName, topic, teacherMessage, history } = req.body as {
+        language: string; studentName: string; topic: string; teacherMessage: string; history: RehearsalTurn[];
+      };
+      const followUpCount = Array.isArray(history) ? history.filter((turn) => turn.sender === "student").length - 1 : 0;
+      res.json({ demo: true, providerFallback: true, state: followUpCount >= MAX_REHEARSAL_FOLLOW_UPS - 1 ? "turn-limit" : "probing", reply: demoRehearsalReply({ language, studentName, topic, teacherMessage, followUpCount }) });
+      return;
+    }
     res.status(status).json({ error: message });
   }
 });
@@ -652,6 +667,11 @@ Draft concise, encouraging, non-punitive specialist mentor feedback strictly in 
     res.json(parsed);
   } catch (err) {
     const { status, message } = extractApiError(err);
+    if (status >= 500) {
+      const { language } = req.body as { language: string };
+      res.json({ ...createDemoMentorFeedback(language), providerFallback: true });
+      return;
+    }
     res.status(status).json({ error: message });
   }
 });
