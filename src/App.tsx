@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, X } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { LessonPrepStudio } from "./components/LessonPrepStudio";
 import { RehearsalReview } from "./components/RehearsalReview";
 import { CpdPortfolio } from "./components/CpdPortfolio";
 import { CohortOversight } from "./components/CohortOversight";
+import { SessionStartFlow, type TeacherProfileDraft } from "./components/SessionStartFlow";
+import { Alert } from "./components/ui";
 import type {
   ActiveSection,
   BansayLanguage,
@@ -41,13 +42,14 @@ function loadStored<T>(key: string, fallback: T): T {
 
 export default function App() {
   const [language, setLanguage] = useState<BansayLanguage>("en");
+  const [teacherProfile, setTeacherProfile] = useState<TeacherProfileDraft | null>(null);
   const [role, setRole] = useState<UserRole>("teacher");
   const [activeSection, setActiveSection] = useState<ActiveSection>("prep");
+  const [hasEstablishedLesson, setHasEstablishedLesson] = useState(false);
   const [lowDataMode, setLowDataMode] = useState<boolean>(() =>
     loadStored("bansay_low_data_v1", false)
   );
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [mentorVideos, setMentorVideos] = useState<Record<string, LocalMentorRecording>>({});
 
@@ -151,24 +153,24 @@ export default function App() {
     setToast(`Language changed to ${nextLang === "en" ? "English" : nextLang === "fil" ? "Filipino" : "Cebuano"}`);
   };
 
-  const handleRoleChange = (nextRole: UserRole) => {
-    setRole(nextRole);
-    if (nextRole === "mentor" || nextRole === "coordinator") {
-      setActiveSection("cohort");
-    } else if (activeSection === "cohort") {
-      setActiveSection("prep");
-    }
-    setToast(`Viewing as ${nextRole}`);
-  };
-
   const activeCase = useMemo(
     () => cases.find((c) => c.id === activeCaseId) || cases[0],
     [cases, activeCaseId]
   );
 
+  const handleSelectSection = (section: ActiveSection) => {
+    if (section === "rehearsal" && !hasEstablishedLesson) {
+      setActiveSection("prep");
+      setToast("Build a lesson support pack before starting rehearsal.");
+      return;
+    }
+    setActiveSection(section);
+  };
+
   const handleCreateOrUpdateCase = (newCase: LessonCase) => {
     setCases((prev) => [newCase, ...prev]);
     setActiveCaseId(newCase.id);
+    setHasEstablishedLesson(true);
   };
 
   const handleUpdateCase = (updated: LessonCase) => {
@@ -227,17 +229,29 @@ export default function App() {
   const pendingReviewsCount = cases.filter(
     (c) => c.mentorReview.status === "pending"
   ).length;
-  const cachedCount = cases.filter((c) => c.cachedOffline).length;
+  if (!teacherProfile) {
+    return (
+      <SessionStartFlow
+        onComplete={(profile) => {
+          setLanguage(profile.language);
+          setLowDataMode(profile.lowDataMode);
+          setTeacherProfile(profile);
+          setRole(profile.role);
+          setActiveSection(profile.role === "teacher" ? "prep" : "cohort");
+        }}
+      />
+    );
+  }
 
   return (
     <div
-      className={`min-h-[100dvh] flex overflow-x-clip bg-[#F7F6FB] text-slate-900 ${
+      className={`bansay-app min-h-[100dvh] flex overflow-x-clip bg-[#F7F6FB] text-slate-900 ${
         lowDataMode ? "low-data-mode" : ""
       }`}
     >
       <Sidebar
         activeSection={activeSection}
-        onSelectSection={setActiveSection}
+        onSelectSection={handleSelectSection}
         language={language}
         role={role}
         completedCompetencies={completedCompetencies}
@@ -245,27 +259,30 @@ export default function App() {
         pendingReviewsCount={pendingReviewsCount}
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
-        collapsed={sidebarCollapsed}
-        onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
         lowDataMode={lowDataMode}
         onToggleLowDataMode={() => {
           setLowDataMode((value) => !value);
           setToast(lowDataMode ? "Standard data mode enabled" : "Low-data mode enabled");
         }}
         onChangeLanguage={handleLanguageChange}
-        onChangeRole={handleRoleChange}
+        teacherName={teacherProfile.teacherName}
+        onLogout={() => {
+          setTeacherProfile(null);
+          setRole("teacher");
+          setActiveSection("prep");
+          setMobileMenuOpen(false);
+        }}
       />
 
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar
           language={language}
           lowDataMode={lowDataMode}
-          cachedCount={cachedCount}
           onOpenMobileMenu={() => setMobileMenuOpen(true)}
         />
 
         <main className="flex-1 min-w-0 px-3 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
-          <div className="w-full max-w-6xl mx-auto">
+          <div className="mx-auto w-full max-w-[90rem]">
             {activeSection === "prep" && (
               <LessonPrepStudio
                 language={language}
@@ -275,8 +292,9 @@ export default function App() {
                 onSelectCase={setActiveCaseId}
                 onCreateOrUpdateCase={handleCreateOrUpdateCase}
                 onUpdateActiveCase={handleUpdateCase}
-                onGoToRehearsal={() => setActiveSection("rehearsal")}
+                onGoToRehearsal={() => handleSelectSection("rehearsal")}
                 onNotify={setToast}
+                teacherProfile={teacherProfile}
               />
             )}
 
@@ -294,6 +312,8 @@ export default function App() {
                 mentorRecording={mentorVideos[activeCase.id]}
                 onStoreMentorVideo={handleStoreMentorVideo}
                 onClearMentorVideo={handleClearMentorVideo}
+                isLessonReady={hasEstablishedLesson}
+                onPlanLesson={() => setActiveSection("prep")}
               />
             )}
 
@@ -323,13 +343,7 @@ export default function App() {
       </div>
 
       {toast && (
-        <div className="fixed bottom-4 right-4 z-[70] flex max-w-sm items-start gap-3 rounded-xl border border-emerald-200 bg-white px-4 py-3 shadow-lg shadow-slate-900/10" role="status">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-          <p className="flex-1 text-sm font-medium text-slate-800">{toast}</p>
-          <button type="button" onClick={() => setToast(null)} className="-mr-1 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Dismiss notification">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        <div className="fixed bottom-4 right-4 z-[70] w-[calc(100%-2rem)] max-w-sm shadow-lg shadow-slate-900/10"><Alert tone="success" onDismiss={() => setToast(null)}>{toast}</Alert></div>
       )}
     </div>
   );

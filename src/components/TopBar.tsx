@@ -5,21 +5,19 @@ import { UI_COPY } from "../data/bansayData";
 interface TopBarProps {
   language: BansayLanguage;
   lowDataMode: boolean;
-  cachedCount: number;
   onOpenMobileMenu: () => void;
 }
 
 export function TopBar({
   language,
   lowDataMode,
-  cachedCount,
   onOpenMobileMenu,
 }: TopBarProps) {
   const copy = UI_COPY[language];
 
   return (
     <header className="sticky top-0 z-30 bg-white border-b border-slate-200 px-3 py-3 sm:px-6">
-      <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
+      <div className="mx-auto flex w-full max-w-[90rem] items-center justify-between gap-3">
         <div className="flex items-center gap-2.5 min-w-0 sm:gap-3">
           <button
             type="button"
@@ -42,10 +40,6 @@ export function TopBar({
           </div>
 
         </div>
-
-        <p className="hidden sm:block text-xs text-slate-500 tabular-nums whitespace-nowrap">
-          {copy.offlineCacheReady} · {cachedCount} lessons saved
-        </p>
       </div>
     </header>
   );

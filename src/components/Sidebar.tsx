@@ -6,8 +6,6 @@ import {
   Globe,
   Lock,
   MessageSquare,
-  PanelLeftClose,
-  PanelLeftOpen,
   Settings,
   Sparkles,
   Users,
@@ -16,6 +14,7 @@ import {
 import { BansayLogo } from "./BansayLogo";
 import type { ActiveSection, BansayLanguage, UserRole } from "../types/bansay";
 import { UI_COPY } from "../data/bansayData";
+import { CustomSelect } from "./CustomSelect";
 
 interface SidebarProps {
   activeSection: ActiveSection;
@@ -27,12 +26,11 @@ interface SidebarProps {
   pendingReviewsCount: number;
   mobileOpen: boolean;
   onCloseMobile: () => void;
-  collapsed: boolean;
-  onToggleCollapsed: () => void;
   lowDataMode: boolean;
   onToggleLowDataMode: () => void;
   onChangeLanguage: (language: BansayLanguage) => void;
-  onChangeRole: (role: UserRole) => void;
+  teacherName: string;
+  onLogout: () => void;
 }
 
 export function Sidebar({
@@ -45,14 +43,14 @@ export function Sidebar({
   pendingReviewsCount,
   mobileOpen,
   onCloseMobile,
-  collapsed,
-  onToggleCollapsed,
   lowDataMode,
   onToggleLowDataMode,
   onChangeLanguage,
-  onChangeRole,
+  teacherName,
+  onLogout,
 }: SidebarProps) {
   const copy = UI_COPY[language];
+  const collapsed = false;
   const progressPct = Math.min(100, Math.round((completedCompetencies / totalCompetencies) * 100));
 
   const navItems: Array<{
@@ -60,28 +58,18 @@ export function Sidebar({
     label: string;
     icon: typeof Sparkles;
     hint?: string;
+    detail: string;
   }> = [
-    {
-      id: "prep",
-      label: copy.navPrep,
-      icon: Sparkles,
-    },
-    {
-      id: "rehearsal",
-      label: copy.navRehearsal,
-      icon: MessageSquare,
-    },
-    {
-      id: "portfolio",
-      label: copy.navPortfolio,
-      icon: Award,
-    },
-    {
-      id: "cohort",
-      label: role === "mentor" ? "Mentor Review Queue" : copy.navCohort,
-      icon: Users,
-      hint: role === "mentor" && pendingReviewsCount > 0 ? `${pendingReviewsCount}` : undefined,
-    },
+    ...(role === "teacher" ? [
+      { id: "prep" as ActiveSection, label: "Lesson Prep Studio", icon: Sparkles, detail: "Intake, baseline, Concept Pack" },
+      { id: "rehearsal" as ActiveSection, label: "Rehearsal & Review", icon: MessageSquare, detail: "Practice, correction, fresh case" },
+      { id: "portfolio" as ActiveSection, label: "Teaching Portfolio", icon: Award, detail: "Private evidence and annual track" },
+    ] : role === "mentor" ? [
+      { id: "cohort" as ActiveSection, label: "Review Queue", icon: Users, detail: "Initial, fresh-case, post-class", hint: pendingReviewsCount ? `${pendingReviewsCount}` : undefined },
+      { id: "portfolio" as ActiveSection, label: "Verified Packs", icon: Award, detail: "Packs you edited or badged" },
+    ] : [
+      { id: "cohort" as ActiveSection, label: "Cohort Summary", icon: Users, detail: "Anonymous completion and demand" },
+    ]),
   ];
 
   const handleNav = (id: ActiveSection) => {
@@ -100,7 +88,7 @@ export function Sidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(16rem,calc(100vw-2.5rem))] flex-col justify-between overflow-y-auto bg-[#31175B] text-white transition-[transform,width] duration-200 lg:static lg:h-auto lg:translate-x-0 lg:overflow-visible shrink-0 ${collapsed ? "lg:w-[4.5rem]" : "lg:w-64"} ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(16rem,calc(100vw-2.5rem))] flex-col justify-between overflow-y-auto bg-[#31175B] text-left text-white transition-[transform,width] duration-200 lg:static lg:h-auto lg:translate-x-0 lg:overflow-hidden shrink-0 ${collapsed ? "lg:w-[4.5rem]" : "lg:w-64"} ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         aria-label="Primary navigation"
@@ -127,21 +115,12 @@ export function Sidebar({
             >
               <X className="w-5 h-5" />
             </button>
-            <button
-              type="button"
-              onClick={onToggleCollapsed}
-              className="hidden lg:inline-flex rounded-lg p-1.5 text-purple-200 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
-              aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-              title={collapsed ? "Expand navigation" : "Collapse navigation"}
-            >
-              {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-            </button>
           </div>
 
           {/* Workspace Nav */}
           <div className={`pt-5 ${collapsed ? "px-2" : "px-3.5"}`}>
             <p className={`px-2.5 text-xs font-medium text-purple-200/75 mb-2 ${collapsed ? "lg:sr-only" : ""}`}>
-              {copy.workspaceLabel}
+              {role === "teacher" ? "TEACHER WORKSPACE" : role === "mentor" ? "MENTOR WORKSPACE" : "COORDINATOR / SCHOOL HEAD"}
             </p>
             <nav className="space-y-1">
               {navItems.map((item) => {
@@ -152,19 +131,19 @@ export function Sidebar({
                     key={item.id}
                     type="button"
                     onClick={() => handleNav(item.id)}
-                    className={`w-full flex items-center ${collapsed ? "justify-center px-2" : "justify-between px-3"} gap-2.5 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-white ${
+                    className={`w-full flex items-center text-left ${collapsed ? "justify-center px-2" : "justify-between px-3"} gap-2.5 py-2.5 rounded-xl text-sm font-medium transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-white ${
                       isActive
                         ? "bg-white text-[#2B1354] shadow-sm font-semibold"
                         : "text-purple-100/90 hover:bg-white/10 hover:text-white"
                     }`}
                   >
-                    <span className="flex items-center gap-2.5 min-w-0">
+                    <span className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
                       <Icon
                         className={`w-4 h-4 shrink-0 ${
                           isActive ? "text-[#5B21B6]" : "text-purple-200"
                         }`}
                       />
-                      <span className={`truncate ${collapsed ? "lg:sr-only" : ""}`}>{item.label}</span>
+                      <span className={`min-w-0 text-left ${collapsed ? "lg:sr-only" : ""}`}><span className="block truncate text-left">{item.label}</span><span className="mt-0.5 block truncate text-left text-[10px] font-normal opacity-70">{item.detail}</span></span>
                     </span>
                     {item.hint && !collapsed && (
                       <span
@@ -219,28 +198,24 @@ export function Sidebar({
           <div className={`rounded-xl border border-white/10 bg-white/5 ${collapsed ? "p-2" : "p-3"}`}>
             <div className="flex items-center gap-2">
               <div className="flex h-7 w-7 items-center justify-center rounded-full bg-purple-300 text-xs font-bold text-[#31175B]">
-                {role === "teacher" ? "MR" : role === "mentor" ? "RV" : "CO"}
+                {teacherName.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase() || "T"}
               </div>
               <div className={`min-w-0 ${collapsed ? "lg:hidden" : ""}`}>
-                <p className="truncate text-xs font-semibold text-white">Maria Reyes</p>
+                <p className="truncate text-xs font-semibold text-white">{teacherName}</p>
                 <p className="text-[11px] capitalize text-purple-200">{role}</p>
               </div>
-            </div>
-            <div className={`mt-3 space-y-2 ${collapsed ? "lg:hidden" : ""}`}>
-              <label className="block text-[11px] font-medium text-purple-200" htmlFor="sidebar-role">Role</label>
-              <select id="sidebar-role" value={role} onChange={(event) => onChangeRole(event.target.value as UserRole)} className="w-full rounded-lg border border-white/15 bg-[#31175B] px-2 py-1.5 text-xs text-white focus-visible:outline-2 focus-visible:outline-white">
-                <option value="teacher">{copy.roleTeacher}</option><option value="mentor">{copy.roleMentor}</option><option value="coordinator">{copy.roleCoordinator}</option>
-              </select>
             </div>
           </div>
 
           <details className={`group rounded-xl border border-white/10 bg-white/5 ${collapsed ? "hidden" : ""}`}>
             <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-xs font-semibold text-white">
-              <span className="flex items-center gap-2"><Settings className="h-3.5 w-3.5 text-purple-200" /> Settings</span><ChevronLeft className="h-3.5 w-3.5 rotate-[-90deg] text-purple-200 transition-transform group-open:rotate-90" />
+              <span className="flex items-center gap-2"><Settings className="h-3.5 w-3.5 text-purple-200" /> Profile &amp; Settings</span><ChevronLeft className="h-3.5 w-3.5 rotate-[-90deg] text-purple-200 transition-transform group-open:rotate-90" />
             </summary>
             <div className="space-y-3 border-t border-white/10 px-3 py-3">
               <button type="button" onClick={onToggleLowDataMode} className="flex w-full items-center justify-between text-left text-xs text-purple-100 hover:text-white"><span>Low-data mode</span><span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px]">{lowDataMode ? "On" : "Off"}</span></button>
-              <div><p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-purple-200"><Globe className="h-3.5 w-3.5" /> Language</p><select value={language} onChange={(event) => onChangeLanguage(event.target.value as BansayLanguage)} className="w-full rounded-lg border border-white/15 bg-[#31175B] px-2 py-1.5 text-xs text-white focus-visible:outline-2 focus-visible:outline-white"><option value="en">English</option><option value="fil">Filipino</option><option value="ceb">Cebuano</option></select></div>
+              <div><p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-purple-200"><Globe className="h-3.5 w-3.5" /> Language</p><CustomSelect value={language} onChange={onChangeLanguage} options={[{ value: "en", label: "English" }, { value: "fil", label: "Filipino" }, { value: "ceb", label: "Cebuano" }]} ariaLabel="Language" className="px-2 py-1.5 text-xs" dark /></div>
+              <p className="text-[11px] leading-relaxed text-purple-200">Offline downloads, career-stage selection, media consent, and data deletion controls are managed per lesson or account.</p>
+              <button type="button" onClick={onLogout} className="w-full rounded-lg border border-white/20 px-2.5 py-2 text-left text-xs font-semibold text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white">Log out</button>
             </div>
           </details>
 

@@ -69,6 +69,7 @@ export interface LessonCase {
   teacherName: string;
   teacherMajor: string;
   classDate: string;
+  careerStage?: "1" | "2" | "3" | "4";
   submittedAt: string;
   language: BansayLanguage;
   startingMaterial: string;
