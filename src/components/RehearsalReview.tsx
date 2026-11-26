@@ -26,6 +26,8 @@ import type {
 } from "../types/bansay";
 import { UI_COPY } from "../data/bansayData";
 import type { LocalMentorRecording } from "../App";
+import { CustomSelect } from "./CustomSelect";
+import { Tabs } from "./ui";
 
 interface RehearsalReviewProps {
   language: BansayLanguage;
@@ -374,7 +376,7 @@ export function RehearsalReview({
 
   if (!isLessonReady) {
     return (
-      <section className="max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
+      <section className="w-full rounded-2xl border border-slate-200 bg-white p-6 sm:p-8">
         <h1 className="font-display text-2xl font-bold text-slate-900">Plan a lesson first</h1>
         <p className="mt-2 text-sm leading-6 text-slate-600">Choose a subject, grade level, topic, and class date in Lesson Prep, then build the AI Draft before starting rehearsal.</p>
         <button type="button" onClick={onPlanLesson} className="mt-6 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-800">Go to Lesson Prep</button>
@@ -433,30 +435,7 @@ export function RehearsalReview({
         <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-5">
           {/* Scenario Step Tabs */}
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
-            <div className="inline-flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
-              <button
-                type="button"
-                onClick={() => setScenarioTab(1)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
-                  scenarioTab === 1
-                    ? "bg-white text-violet-950 shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Scenario 1 of 2 · Learner rehearsal
-              </button>
-              <button
-                type="button"
-                onClick={() => setScenarioTab(2)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
-                  scenarioTab === 2
-                    ? "bg-white text-violet-950 shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Scenario 2 of 2 · Fresh case
-              </button>
-            </div>
+            <div className="w-full sm:w-auto sm:min-w-[25rem]"><Tabs value={scenarioTab} onChange={setScenarioTab} label="Rehearsal scenarios" items={[{ value: 1, label: "1 · Learner rehearsal" }, { value: 2, label: "2 · Fresh case" }]} /></div>
 
             <button
               type="button"
@@ -894,19 +873,7 @@ export function RehearsalReview({
                     className="w-full text-xs bg-white border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600"
                   />
                 </div>
-                <select
-                  value={librarySubject}
-                  onChange={(e) =>
-                    setLibrarySubject(e.target.value as "All" | SubjectName)
-                  }
-                  aria-label="Filter by subject"
-                  className="text-xs bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-800"
-                >
-                  <option value="All">All subjects</option>
-                  <option value="Science">Science</option>
-                  <option value="Mathematics">Mathematics</option>
-                  <option value="English">English</option>
-                </select>
+                <CustomSelect value={librarySubject} onChange={setLibrarySubject} options={[{ value: "All", label: "All subjects" }, { value: "Science", label: "Science" }, { value: "Mathematics", label: "Mathematics" }, { value: "English", label: "English" }]} ariaLabel="Filter by subject" className="w-full sm:w-40 text-xs" />
               </div>
 
               <div className="space-y-3">

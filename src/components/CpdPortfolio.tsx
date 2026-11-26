@@ -14,6 +14,8 @@ import type {
   CompetencyQuarter,
 } from "../types/bansay";
 import { UI_COPY } from "../data/bansayData";
+import { CustomSelect } from "./CustomSelect";
+import { FieldError } from "./ui";
 
 interface CpdPortfolioProps {
   language: BansayLanguage;
@@ -41,13 +43,16 @@ export function CpdPortfolio({
   const [revisionUsed, setRevisionUsed] = useState("");
   const [classroomOutcome, setClassroomOutcome] = useState("");
   const [colleagueObserved, setColleagueObserved] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
   const totalCompleted = quarters.reduce((sum, q) => sum + q.completedCount, 0);
   const totalTarget = quarters.reduce((sum, q) => sum + q.targetCount, 0);
 
   const handleSubmitEvidence = (e: FormEvent) => {
     e.preventDefault();
-    if (!title.trim() || !revisionUsed.trim()) return;
+    if (!title.trim()) { setFormError("Enter a short title so you can identify this evidence later."); return; }
+    if (!revisionUsed.trim()) { setFormError("Describe the revision you used; this is required for your portfolio record."); return; }
+    setFormError(null);
 
     const newItem: ClassroomEvidenceItem = {
       id: `ev-${Date.now()}`,
@@ -347,10 +352,11 @@ export function CpdPortfolio({
                   type="text"
                   required
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => { setTitle(e.target.value); if (formError) setFormError(null); }}
                   placeholder="e.g., Dried saltwater saucer check with Grade 7 Ruby"
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-900"
                 />
+                {formError?.startsWith("Enter a short") && <FieldError>{formError}</FieldError>}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -369,19 +375,7 @@ export function CpdPortfolio({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Evidence type
                   </label>
-                  <select
-                    value={evidenceType}
-                    onChange={(e) =>
-                      setEvidenceType(
-                        e.target.value as ClassroomEvidenceItem["evidenceType"]
-                      )
-                    }
-                    className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-900"
-                  >
-                    <option value="Improvised Lab Setup">Improvised Lab Setup</option>
-                    <option value="Classroom Reflection">Classroom Reflection</option>
-                    <option value="Colleague Observation">Colleague Observation</option>
-                  </select>
+                  <CustomSelect value={evidenceType} onChange={(value) => setEvidenceType(value as ClassroomEvidenceItem["evidenceType"])} options={["Improvised Lab Setup", "Classroom Reflection", "Colleague Observation"].map((item) => ({ value: item, label: item }))} ariaLabel="Evidence type" />
                 </div>
               </div>
 
@@ -393,10 +387,11 @@ export function CpdPortfolio({
                   rows={2}
                   required
                   value={revisionUsed}
-                  onChange={(e) => setRevisionUsed(e.target.value)}
+                  onChange={(e) => { setRevisionUsed(e.target.value); if (formError) setFormError(null); }}
                   placeholder="Describe the explanation or demonstration change you applied..."
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-900"
                 />
+                {formError?.startsWith("Describe the revision") && <FieldError>{formError}</FieldError>}
               </div>
 
               <div>

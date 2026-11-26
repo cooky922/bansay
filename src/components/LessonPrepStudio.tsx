@@ -27,6 +27,9 @@ import {
   UI_COPY,
 } from "../data/bansayData";
 import type { TeacherProfileDraft } from "./SessionStartFlow";
+import { CustomSelect } from "./CustomSelect";
+import { DatePicker } from "./DatePicker";
+import { Checkbox, FieldError, Tabs } from "./ui";
 
 interface LessonPrepStudioProps {
   language: BansayLanguage;
@@ -78,6 +81,7 @@ function WorkspaceLessonIntake({
   const [baselineFirst, setBaselineFirst] = useState(false);
   const [baselineExplanation, setBaselineExplanation] = useState("");
   const [careerStage, setCareerStage] = useState<"1" | "2" | "3" | "4">("2");
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const presets = DEPED_TOPIC_PRESETS[subject].filter((item) => item.gradeLevel === gradeLevel);
   const canBuild = Boolean(topic.trim() && (!baselineFirst || baselineExplanation.trim()));
 
@@ -95,20 +99,21 @@ function WorkspaceLessonIntake({
   };
 
   return (
-    <section className="max-w-4xl rounded-2xl border border-slate-200 bg-white p-5 sm:p-8">
+    <section className="w-full rounded-2xl border border-slate-200 bg-white p-5 sm:p-8">
       <h1 className="font-display text-2xl font-bold text-slate-900">Tell us what you are teaching</h1>
       <div className="mt-6 space-y-5">
         <div className="grid gap-3 sm:grid-cols-3">
           {(["Science", "Mathematics", "English"] as SubjectName[]).map((item) => <button type="button" key={item} onClick={() => changeSubject(item)} className={`rounded-xl border p-4 text-left text-sm font-semibold ${subject === item ? "border-violet-700 bg-violet-50 text-violet-950 ring-1 ring-violet-700" : "border-slate-200 text-slate-700 hover:border-violet-300"}`}>{item}</button>)}
         </div>
         <div className="grid gap-3 sm:grid-cols-[7.5rem_minmax(0,1fr)]">
-          <label className="text-sm font-medium text-slate-700">Grade level<select value={gradeLevel} onChange={(event) => changeGrade(event.target.value)} className="input">{["Grade 7", "Grade 8", "Grade 9", "Grade 10"].map((item) => <option key={item}>{item}</option>)}</select></label>
-          <div className="text-sm font-medium text-slate-700"><div className="mb-0.5 flex items-center justify-between gap-3"><label htmlFor="deped-topic">DepEd topic</label><button type="button" onClick={() => { const next = !customTopic; setCustomTopic(next); if (next) setTopic(""); else { const first = DEPED_TOPIC_PRESETS[subject].find((item) => item.gradeLevel === gradeLevel); if (first) setTopic(first.topic); } }} className="text-sm font-semibold text-violet-700 hover:text-violet-900">{customTopic ? "Use a preset" : "Custom topic"}</button></div>{customTopic ? <input id="deped-topic" value={topic} onChange={(event) => setTopic(event.target.value)} className="input" placeholder="Your lesson topic" /> : <select id="deped-topic" value={topic} onChange={(event) => setTopic(event.target.value)} className="input" disabled={!presets.length}><option value="">{presets.length ? "Select a DepEd preset" : "No preset for this grade"}</option>{presets.map((item) => <option key={item.topic} value={item.topic}>{item.topic}</option>)}</select>}</div>
-          <label className="text-sm font-medium text-slate-700 sm:col-span-2">Class date<input type="date" value={classDate} onChange={(event) => setClassDate(event.target.value)} className="input" /></label>
+          <label className="text-sm font-medium text-slate-700">Grade level<CustomSelect value={gradeLevel} onChange={changeGrade} options={["Grade 7", "Grade 8", "Grade 9", "Grade 10"].map((item) => ({ value: item, label: item }))} className="mt-1.5" ariaLabel="Grade level" /></label>
+          <div className="text-sm font-medium text-slate-700"><div className="mb-0.5 flex items-center justify-between gap-3"><label htmlFor="deped-topic">DepEd topic</label><button type="button" onClick={() => { const next = !customTopic; setCustomTopic(next); if (next) setTopic(""); else { const first = DEPED_TOPIC_PRESETS[subject].find((item) => item.gradeLevel === gradeLevel); if (first) setTopic(first.topic); } }} className="text-sm font-semibold text-violet-700 hover:text-violet-900">{customTopic ? "Use a preset" : "Custom topic"}</button></div>{customTopic ? <input id="deped-topic" value={topic} onChange={(event) => setTopic(event.target.value)} className="input" placeholder="Your lesson topic" /> : <CustomSelect value={topic} onChange={setTopic} options={presets.map((item) => ({ value: item.topic, label: item.topic }))} placeholder={presets.length ? "Select a DepEd preset" : "No preset for this grade"} disabled={!presets.length} className="mt-1.5" ariaLabel="DepEd topic" />}</div>
+          <label className="text-sm font-medium text-slate-700 sm:col-span-2">Class date<DatePicker value={classDate} onChange={setClassDate} locale={language} className="mt-1.5" /></label>
         </div>
         <div className="grid gap-3 sm:grid-cols-2"><div><p className="flex items-center gap-1 text-sm font-medium text-slate-700">Private self-calibration<button type="button" title="Sets the amount of support for this lesson. It does not rate you." aria-label="About private self-calibration" className="text-slate-400 hover:text-violet-700"><Info className="h-3.5 w-3.5" /></button></p><div className="relative mt-1.5 grid grid-cols-4 rounded-xl bg-slate-100 p-1"><span className="absolute inset-y-1 rounded-lg bg-violet-700 shadow-sm transition-transform duration-200" style={{ width: "calc(25% - 0.25rem)", transform: `translateX(${(Number(careerStage) - 1) * 100}%)` }} />{(["1", "2", "3", "4"] as const).map((stage) => <button type="button" key={stage} onClick={() => setCareerStage(stage)} className={`relative z-10 rounded-lg px-1 py-2 text-xs font-semibold ${careerStage === stage ? "text-white" : "text-slate-500"}`} aria-pressed={careerStage === stage}>{stage}</button>)}</div><p className="mt-1 text-xs text-slate-500">{({ "1": "Beginning", "2": "Proficient", "3": "Highly Proficient", "4": "Distinguished" } as const)[careerStage]}</p></div><div className="rounded-xl border border-violet-100 bg-violet-50/50 p-4"><div className="flex items-center gap-2 text-sm font-semibold text-slate-800"><input id="baseline-first" type="checkbox" checked={baselineFirst} onChange={(event) => setBaselineFirst(event.target.checked)} /><label htmlFor="baseline-first">Baseline First</label><button type="button" title="Lets you record your first explanation before reading the AI Draft." aria-label="About Baseline First" className="text-slate-400 hover:text-violet-700"><Info className="h-3.5 w-3.5" /></button></div><p className="mt-1 text-sm text-slate-600">Record your explanation before reading the AI Draft.</p>{baselineFirst && <textarea rows={3} value={baselineExplanation} onChange={(event) => setBaselineExplanation(event.target.value)} className="input mt-3" placeholder="Write your 1–2 sentence explanation..." />}</div></div>
-        {error && <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
-        <button type="button" disabled={!canBuild || isGenerating} onClick={() => onBuild({ subject, gradeLevel, topic, classDate, baselineFirst, baselineExplanation: baselineExplanation.trim(), careerStage })} className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-800 disabled:opacity-50">{isGenerating ? "Building AI Draft…" : "Build AI Draft"}</button>
+        {error && <FieldError>{error}</FieldError>}
+        {submitAttempted && !canBuild && <FieldError>{baselineFirst && !baselineExplanation.trim() ? "Write your baseline explanation before building the AI draft." : "Choose or enter a lesson topic before building the AI draft."}</FieldError>}
+        <button type="button" disabled={isGenerating} onClick={() => { setSubmitAttempted(true); if (canBuild) onBuild({ subject, gradeLevel, topic, classDate, baselineFirst, baselineExplanation: baselineExplanation.trim(), careerStage }); }} className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-800 disabled:opacity-50">{isGenerating ? "Building AI Draft…" : "Build AI Draft"}</button>
       </div>
     </section>
   );
@@ -393,31 +398,23 @@ export function LessonPrepStudio({
         </div>
 
         <div className="flex items-center gap-2">
-          <label htmlFor="active-case-select" className="sr-only">
-            Active lesson
-          </label>
-          <select
-            id="active-case-select"
+          <CustomSelect
             value={activeCase.id}
-            onChange={(e) => {
-              onSelectCase(e.target.value);
+            onChange={(caseId) => {
+              onSelectCase(caseId);
               setBaselineDraft("");
               setBaselineSkipped(false);
               setDemoMode(false);
             }}
-            className="w-full sm:w-auto text-xs font-medium text-slate-800 bg-white border border-slate-200 rounded-lg px-3 py-2 sm:py-1.5 sm:max-w-xs truncate focus-visible:outline-2 focus-visible:outline-violet-600"
-          >
-            {cases.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.subject} ({c.gradeLevel}) — {c.topic.slice(0, 42)}
-              </option>
-            ))}
-          </select>
+            options={cases.map((c) => ({ value: c.id, label: `${c.subject} (${c.gradeLevel}) — ${c.topic.slice(0, 42)}` }))}
+            className="w-full sm:w-80 text-xs font-medium"
+            ariaLabel="Active lesson"
+          />
         </div></div>
       </div>
 
       {(step as 1 | 2) === 1 ? (
-        <section className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-8 max-w-4xl">
+        <section className="w-full bg-white border border-slate-200 rounded-2xl p-4 sm:p-8">
           <p className="text-xs font-medium text-violet-700 mb-1">
             {copy.step1Kicker}
           </p>
@@ -460,18 +457,7 @@ export function LessonPrepStudio({
                 >
                   Your college major
                 </label>
-                <select
-                  id="major-select"
-                  value={teacherMajor}
-                  onChange={(e) => setTeacherMajor(e.target.value)}
-                  className="w-full text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600"
-                >
-                  {TEACHER_MAJORS.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
+                <CustomSelect value={teacherMajor} onChange={setTeacherMajor} options={TEACHER_MAJORS.map((major) => ({ value: major, label: major }))} ariaLabel="Your college major" />
               </div>
 
               <div>
@@ -481,16 +467,7 @@ export function LessonPrepStudio({
                 >
                   Class date
                 </label>
-                <div className="relative">
-                  <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
-                  <input
-                    id="class-date"
-                    type="date"
-                    value={classDate}
-                    onChange={(e) => setClassDate(e.target.value)}
-                    className="w-full text-sm bg-white border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-slate-900 tabular-nums focus-visible:outline-2 focus-visible:outline-violet-600"
-                  />
-                </div>
+                <DatePicker value={classDate} onChange={setClassDate} locale={language} label="Class date" />
               </div>
             </div>
 
@@ -535,17 +512,7 @@ export function LessonPrepStudio({
 
               {useCustomTopic ? (
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  <select
-                    value={gradeLevel}
-                    onChange={(e) => setGradeLevel(e.target.value)}
-                    aria-label="Grade level"
-                    className="text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900"
-                  >
-                    <option value="Grade 7">Grade 7</option>
-                    <option value="Grade 8">Grade 8</option>
-                    <option value="Grade 9">Grade 9</option>
-                    <option value="Grade 10">Grade 10</option>
-                  </select>
+                  <CustomSelect value={gradeLevel} onChange={setGradeLevel} options={["Grade 7", "Grade 8", "Grade 9", "Grade 10"].map((item) => ({ value: item, label: item }))} ariaLabel="Grade level" />
                   <input
                     type="text"
                     value={customTopic}
@@ -555,24 +522,18 @@ export function LessonPrepStudio({
                   />
                 </div>
               ) : (
-                <select
-                  id="topic-select"
+                <CustomSelect
                   value={topic}
-                  onChange={(e) => {
+                  onChange={(nextTopic) => {
                     const selected = DEPED_TOPIC_PRESETS[subject].find(
-                      (p) => p.topic === e.target.value
+                      (p) => p.topic === nextTopic
                     );
-                    setTopic(e.target.value);
+                    setTopic(nextTopic);
                     if (selected) setGradeLevel(selected.gradeLevel);
                   }}
-                  className="w-full text-sm bg-white border border-slate-300 rounded-lg px-3 py-2.5 text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600"
-                >
-                  {DEPED_TOPIC_PRESETS[subject].map((preset) => (
-                    <option key={preset.topic} value={preset.topic}>
-                      {preset.gradeLevel} — {preset.topic}
-                    </option>
-                  ))}
-                </select>
+                  options={DEPED_TOPIC_PRESETS[subject].map((preset) => ({ value: preset.topic, label: `${preset.gradeLevel} — ${preset.topic}` }))}
+                  ariaLabel="DepEd topic or learning competency"
+                />
               )}
             </div>
 
@@ -751,51 +712,7 @@ export function LessonPrepStudio({
             </div>
 
             {/* Segmented Support Tabs */}
-            <div
-              className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-1.5 p-1.5 bg-slate-100 rounded-xl"
-              role="tablist"
-              aria-label="Lesson support sections"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={supportTab === "bridge"}
-                onClick={() => setSupportTab("bridge")}
-                className={`px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
-                  supportTab === "bridge"
-                    ? "bg-white text-violet-950 shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Specialty bridge
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={supportTab === "misconceptions"}
-                onClick={() => setSupportTab("misconceptions")}
-                className={`px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap tabular-nums ${
-                  supportTab === "misconceptions"
-                    ? "bg-white text-violet-950 shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Misconception alerts ({activeCase.support.misconceptionAlerts.length})
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={supportTab === "activity"}
-                onClick={() => setSupportTab("activity")}
-                className={`px-4 py-2.5 rounded-lg text-xs font-semibold transition-colors whitespace-nowrap ${
-                  supportTab === "activity"
-                    ? "bg-white text-violet-950 shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                Improvised activity
-              </button>
-            </div>
+            <div className="mt-6"><Tabs value={supportTab} onChange={setSupportTab} label="Lesson support sections" items={[{ value: "bridge", label: "Specialty bridge" }, { value: "misconceptions", label: `Misconceptions (${activeCase.support.misconceptionAlerts.length})` }, { value: "activity", label: "Activity" }]} /></div>
 
             {/* Baseline-first gate */}
             {needsBaselineGate ? (
