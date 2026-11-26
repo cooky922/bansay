@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, X } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { LessonPrepStudio } from "./components/LessonPrepStudio";
@@ -7,6 +6,7 @@ import { RehearsalReview } from "./components/RehearsalReview";
 import { CpdPortfolio } from "./components/CpdPortfolio";
 import { CohortOversight } from "./components/CohortOversight";
 import { SessionStartFlow, type TeacherProfileDraft } from "./components/SessionStartFlow";
+import { Alert } from "./components/ui";
 import type {
   ActiveSection,
   BansayLanguage,
@@ -50,7 +50,6 @@ export default function App() {
     loadStored("bansay_low_data_v1", false)
   );
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [mentorVideos, setMentorVideos] = useState<Record<string, LocalMentorRecording>>({});
 
@@ -245,7 +244,7 @@ export default function App() {
 
   return (
     <div
-      className={`min-h-[100dvh] flex overflow-x-clip bg-[#F7F6FB] text-slate-900 ${
+      className={`bansay-app min-h-[100dvh] flex overflow-x-clip bg-[#F7F6FB] text-slate-900 ${
         lowDataMode ? "low-data-mode" : ""
       }`}
     >
@@ -259,8 +258,6 @@ export default function App() {
         pendingReviewsCount={pendingReviewsCount}
         mobileOpen={mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
-        collapsed={sidebarCollapsed}
-        onToggleCollapsed={() => setSidebarCollapsed((value) => !value)}
         lowDataMode={lowDataMode}
         onToggleLowDataMode={() => {
           setLowDataMode((value) => !value);
@@ -284,7 +281,7 @@ export default function App() {
         />
 
         <main className="flex-1 min-w-0 px-3 py-5 sm:px-6 sm:py-7 lg:px-8 lg:py-8">
-          <div className="w-full max-w-6xl mx-auto">
+          <div className="mx-auto w-full max-w-[90rem]">
             {activeSection === "prep" && (
               <LessonPrepStudio
                 language={language}
@@ -345,13 +342,7 @@ export default function App() {
       </div>
 
       {toast && (
-        <div className="fixed bottom-4 right-4 z-[70] flex max-w-sm items-start gap-3 rounded-xl border border-emerald-200 bg-white px-4 py-3 shadow-lg shadow-slate-900/10" role="status">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
-          <p className="flex-1 text-sm font-medium text-slate-800">{toast}</p>
-          <button type="button" onClick={() => setToast(null)} className="-mr-1 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Dismiss notification">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+        <div className="fixed bottom-4 right-4 z-[70] w-[calc(100%-2rem)] max-w-sm shadow-lg shadow-slate-900/10"><Alert tone="success" onDismiss={() => setToast(null)}>{toast}</Alert></div>
       )}
     </div>
   );

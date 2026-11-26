@@ -6,6 +6,23 @@
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
 }
 
+:root {
+  --bansay-brand: #6d28d9;
+  --bansay-brand-strong: #4c1d95;
+  --bansay-surface: #ffffff;
+  --bansay-canvas: #f7f6fb;
+  --bansay-text: #0f172a;
+  --bansay-muted: #475569;
+  --bansay-border: #cbd5e1;
+  --bansay-radius-control: 0.75rem;
+  --bansay-radius-card: 1rem;
+  --bansay-shadow-overlay: 0 16px 36px rgb(15 23 42 / 0.18);
+  --bansay-text-xs: 0.75rem;
+  --bansay-text-sm: 0.875rem;
+  --bansay-text-base: 1rem;
+  --bansay-leading: 1.5;
+}
+
 @layer base {
   html, body, #root {
     min-height: 100%;
@@ -16,6 +33,7 @@
     color: #18181b;
     background-color: #f7f6fb;
     -webkit-font-smoothing: antialiased;
+    font-size: 14px;
   }
 
   body {
@@ -40,6 +58,7 @@
   }
 
   button, input, select, textarea, summary {
+    font: inherit;
     transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease,
       box-shadow 150ms ease, opacity 150ms ease;
   }
@@ -53,6 +72,17 @@
     font-family: var(--font-display);
   }
 }
+
+/* Shared type and color roles for every application surface. */
+.bansay-app { color: var(--bansay-text); font-size: var(--bansay-text-sm); line-height: var(--bansay-leading); }
+.bansay-app .text-slate-950, .bansay-app .text-slate-900 { color: var(--bansay-text); }
+.bansay-app .text-slate-800, .bansay-app .text-slate-700 { color: #334155; }
+.bansay-app .text-slate-600, .bansay-app .text-slate-500 { color: var(--bansay-muted); }
+.bansay-app .text-violet-700, .bansay-app .text-violet-800, .bansay-app .text-violet-900 { color: var(--bansay-brand-strong); }
+.bansay-app h1 { font-size: clamp(1.75rem, 3vw, 2.125rem); line-height: 1.16; font-weight: 700; }
+.bansay-app h2 { font-size: 1.25rem; line-height: 1.25; font-weight: 700; }
+.bansay-app h3 { font-size: 1rem; line-height: 1.35; font-weight: 650; }
+.bansay-app label { line-height: 1.35; }
 
 .tabular-nums {
   font-variant-numeric: tabular-nums;
@@ -71,10 +101,78 @@
   outline: none;
 }
 
+.ui-card { border: 1px solid #e2e8f0; border-radius: var(--bansay-radius-card); background: var(--bansay-surface); }
+.ui-button { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: .5rem; border-radius: var(--bansay-radius-control); padding: .625rem 1rem; font-size: var(--bansay-text-sm); font-weight: 700; line-height: 1.25rem; }
+.ui-button:disabled { cursor: not-allowed; opacity: .5; }
+.ui-button-primary { background: var(--bansay-brand); color: white; }.ui-button-primary:hover:not(:disabled) { background: var(--bansay-brand-strong); }
+.ui-button-secondary { border: 1px solid var(--bansay-border); background: white; color: #334155; }.ui-button-secondary:hover:not(:disabled) { background: #f8fafc; color: #0f172a; }
+.ui-button-quiet { color: #475569; }.ui-button-quiet:hover:not(:disabled) { background: #f1f5f9; color: #0f172a; }
+.ui-button-danger { background: #be123c; color: white; }.ui-button-danger:hover:not(:disabled) { background: #9f1239; }
+.ui-input { width: 100%; min-height: 44px; border: 1px solid var(--bansay-border); border-radius: var(--bansay-radius-control); background: white; padding: .625rem .75rem; color: var(--bansay-text); font-size: var(--bansay-text-sm); outline: none; }.ui-input::placeholder { color: #64748b; }.ui-input:focus { border-color: var(--bansay-brand); box-shadow: 0 0 0 2px #ede9fe; }.ui-textarea { min-height: 88px; resize: vertical; }.ui-checkbox { height: 1.125rem; width: 1.125rem; accent-color: var(--bansay-brand); }
+.ui-status { display: inline-flex; align-items: center; border-radius: 999px; padding: .25rem .5rem; font-size: .75rem; font-weight: 700; }.ui-status-neutral { background: #f1f5f9; color: #334155; }.ui-status-success { background: #dcfce7; color: #166534; }.ui-status-warning { background: #fef3c7; color: #92400e; }.ui-status-info { background: #ede9fe; color: #5b21b6; }
+.ui-alert { display: flex; align-items: flex-start; gap: .75rem; border: 1px solid; border-radius: var(--bansay-radius-control); padding: .75rem 1rem; }.ui-alert-info { border-color: #c4b5fd; background: #f5f3ff; color: #4c1d95; }.ui-alert-success { border-color: #a7f3d0; background: #ecfdf5; color: #065f46; }.ui-alert-warning { border-color: #fde68a; background: #fffbeb; color: #92400e; }.ui-alert-danger { border-color: #fecdd3; background: #fff1f2; color: #9f1239; }
+.ui-tabs { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .25rem; border: 1px solid #e2e8f0; border-radius: var(--bansay-radius-control); background: #f8fafc; padding: .25rem; }.ui-tab { min-height: 44px; border-radius: .55rem; padding: .5rem .75rem; color: #475569; font-size: .8125rem; font-weight: 700; line-height: 1.1; text-align: center; }.ui-tab:hover:not(:disabled) { background: white; color: #312e81; }.ui-tab:focus-visible { outline: 2px solid var(--bansay-brand); outline-offset: 1px; }.ui-tab-active { background: white; color: var(--bansay-brand-strong); box-shadow: 0 1px 3px rgb(15 23 42 / .12); }.ui-tab:disabled { cursor: not-allowed; opacity: .5; }
+input[type="checkbox"] { height: 1.125rem; width: 1.125rem; accent-color: var(--bansay-brand); }
+
 .input:focus {
   border-color: #7c3aed;
   box-shadow: 0 0 0 2px #ede9fe;
 }
+
+.date-picker-trigger { display: inline-flex; width: 100%; min-height: 44px; align-items: center; gap: .5rem; border: 1px solid var(--bansay-border); border-radius: var(--bansay-radius-control); background: var(--bansay-surface); padding: .625rem .75rem; color: var(--bansay-text); font-size: .875rem; line-height: 1.25rem; }
+.date-picker-trigger:hover:not(:disabled) { border-color: #a78bfa; }
+.date-picker-trigger:focus-visible { border-color: var(--bansay-brand); box-shadow: 0 0 0 2px #ede9fe; outline: none; }
+.date-picker-trigger:disabled { cursor: not-allowed; opacity: .55; }
+.date-picker-popover { position: fixed; z-index: 100; overflow: hidden; border: 1px solid #e2e8f0; border-radius: var(--bansay-radius-control); background: white; box-shadow: var(--bansay-shadow-overlay); }
+.date-picker-popover-top { transform: translateY(-100%); }
+.icon-button { display: inline-flex; min-height: 36px; min-width: 36px; align-items: center; justify-content: center; border-radius: .5rem; color: #475569; }
+.icon-button:hover { background: #f1f5f9; color: #0f172a; }
+.calendar-day { display: inline-flex; min-height: 36px; align-items: center; justify-content: center; border-radius: .5rem; color: #334155; font-size: .8125rem; font-weight: 600; }
+.calendar-day:hover:not(:disabled) { background: #f3e8ff; color: var(--bansay-brand-strong); }
+.calendar-day:disabled { cursor: not-allowed; opacity: .35; }
+.calendar-day-today { box-shadow: inset 0 0 0 1px #a78bfa; }
+.calendar-day-selected { background: var(--bansay-brand); color: white; box-shadow: none; }
+.calendar-day-selected:hover:not(:disabled) { background: var(--bansay-brand-strong); color: white; }
+
+.custom-select-trigger {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 0.75rem;
+  background: white;
+  padding: 0.625rem 0.75rem;
+  color: #0f172a;
+  font-size: var(--bansay-text-sm);
+  line-height: 1.25rem;
+}
+
+.custom-select-trigger:hover:not(:disabled) { border-color: #a78bfa; }
+.custom-select-trigger:focus-visible { border-color: #7c3aed; box-shadow: 0 0 0 2px #ede9fe; outline: none; }
+.custom-select-trigger:disabled { opacity: 0.55; }
+.custom-select-trigger-dark { border-color: rgb(255 255 255 / 0.15); background: #31175B; color: white; }
+.custom-select-trigger-dark:hover:not(:disabled) { border-color: rgb(255 255 255 / 0.35); }
+
+.custom-select-menu {
+  position: fixed;
+  z-index: 100;
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  background: white;
+  box-shadow: 0 16px 36px rgb(15 23 42 / 0.18);
+}
+
+.custom-select-menu-top { transform: translateY(-100%); }
+
+.custom-select-menu-dark { border-color: rgb(255 255 255 / 0.15); background: #31175B; }
+.custom-select-menu-dark .border-slate-100 { border-color: rgb(255 255 255 / 0.12); }
+.custom-select-menu-dark .bg-slate-50 { background: rgb(255 255 255 / 0.1); }
+.custom-select-menu-dark .border-slate-200 { border-color: rgb(255 255 255 / 0.18); }
+.custom-select-menu-dark input, .custom-select-menu-dark p { color: white; }
+.custom-select-menu-dark button:not(.bg-violet-50) { color: #f3e8ff; }
+.custom-select-menu-dark button:hover:not(.bg-violet-50) { background: rgb(255 255 255 / 0.1); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
