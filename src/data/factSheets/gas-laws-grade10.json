@@ -1,0 +1,88 @@
+{
+  "id": "science-grade10-gas-laws-sealed-bottle-heat-en-v1",
+  "subject": "Science",
+  "gradeLevel": "Grade 10",
+  "language": "en",
+  "topic": "Gas Laws: Why sealed bottles expand under direct heat",
+  "topicAliases": [
+    "Gas Laws: Why sealed bottles expand under direct heat"
+  ],
+  "curriculumGrounding": "K-12 MELCs (G10-12)",
+  "depedCompetency": "Investigate the relationship between: (1) volume and pressure at constant temperature of a gas; (2) volume and temperature at constant pressure of a gas; explain these relationships using the kinetic molecular theory.",
+  "competencyCode": "S10MT-IVa-b-21",
+  "mentorCoreExplanation": "For a rigid sealed bottle, volume and amount of gas stay constant while it remains intact. Heating the trapped air raises the particles’ average kinetic energy; the particles move faster and collide with the walls more often and with greater force, so the gas pressure rises. The molecules do not expand and heating does not add air. This pressure increase is described by Gay-Lussac’s law when temperature is measured in kelvin.",
+  "formula": {
+    "law": "Gay-Lussac's law",
+    "equation": "P1/T1 = P2/T2",
+    "conditions": "The volume and amount of gas remain constant; temperatures must be in kelvin.",
+    "variables": [
+      { "symbol": "P1", "definition": "initial absolute pressure", "unit": "atm" },
+      { "symbol": "T1", "definition": "initial absolute temperature", "unit": "K" },
+      { "symbol": "P2", "definition": "final absolute pressure", "unit": "atm" },
+      { "symbol": "T2", "definition": "final absolute temperature", "unit": "K" }
+    ]
+  },
+  "workedExample": {
+    "initialPressureAtm": 1.0,
+    "initialTemperatureC": 27,
+    "initialTemperatureK": 300,
+    "finalTemperatureC": 57,
+    "finalTemperatureK": 330,
+    "expectedPressureAtm": 1.1,
+    "incorrectCelsiusPressureAtm": 2.1111111111
+  },
+  "commonMisconceptions": [
+    "The molecules expand when heated.",
+    "Heating adds more air to the sealed bottle.",
+    "Celsius temperature can be used directly in the gas-law ratio."
+  ],
+  "approvedDemoMaterials": [
+    "uncapped plastic bottle",
+    "balloon",
+    "basin",
+    "warm water (not hot)",
+    "cool water"
+  ],
+  "demo": {
+    "title": "Balloon on a bottle in warm and cool water",
+    "materialAmounts": {
+      "uncapped plastic bottle": "1 empty bottle, left uncapped",
+      "balloon": "1 balloon",
+      "basin": "2 basins, one for each water condition",
+      "warm water (not hot)": "enough to surround the lower part of the bottle",
+      "cool water": "enough to surround the lower part of the bottle"
+    },
+    "procedure": [
+      "Stretch the balloon over the mouth of the empty, uncapped bottle.",
+      "Place the lower part of the bottle in warm (not hot) water and observe the balloon.",
+      "Move the bottle to cool water and observe the balloon again.",
+      "Compare the observations and explain the change using particle motion and temperature."
+    ],
+    "expectedObservation": "The balloon expands in warm water and contracts in cool water. This safe setup shows how gas volume changes with temperature at approximately constant pressure; it is an analogy for the particle motion in a heated sealed bottle, not a direct test of pressure change at constant volume.",
+    "safetyNote": "Use only warm, not hot, water. Keep the bottle uncapped throughout. Never heat a capped or sealed bottle, and never use a flame."
+  },
+  "requiredScienceTerms": [
+    "Gay-Lussac",
+    "constant volume",
+    "amount of gas",
+    "kinetic molecular theory",
+    "kinetic energy",
+    "collisions",
+    "kelvin",
+    "27 °C",
+    "57 °C",
+    "300 K",
+    "330 K",
+    "1.10 atm"
+  ],
+  "rehearsalPrompt": {
+    "studentName": "Jessa",
+    "openingQuestion": "If the bottle is sealed and its volume stays fixed, why does its pressure rise when the air inside warms?",
+    "freshCasePrompt": "Explain why the pressure of gas in a rigid container changes when its kelvin temperature changes, while the volume and amount of gas stay fixed."
+  },
+  "source": {
+    "title": "K to 12 Basic Education Curriculum: Science Curriculum Guide, Grade 10 – Matter",
+    "competencyCode": "S10MT-IVa-b-21",
+    "url": "https://www.deped.gov.ph/wp-content/uploads/2019/01/Science-CG_with-tagged-sci-equipment_revised.pdf"
+  }
+}

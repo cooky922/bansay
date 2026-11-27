@@ -3,6 +3,8 @@ import {
   ArrowRight,
   BookOpen,
   Check,
+  Eye,
+  EyeOff,
   Loader2,
   Lock,
   UserCheck,
@@ -11,7 +13,7 @@ import type { AuthUserProfile, BansayLanguage } from "../types/bansay";
 import { CHED_RO_X_PROGRAMS } from "../data/chedRoXPrograms";
 import { BansayLogo } from "./BansayLogo";
 import { CustomSelect } from "./CustomSelect";
-import { Alert, Button, Checkbox, FieldError, Tabs, TextField } from "./ui";
+import { Alert, Button, FieldError, TextField } from "./ui";
 import { setAuthToken } from "../lib/apiClient";
 
 type AuthMode = "login" | "register";
@@ -32,13 +34,13 @@ export function SessionStartFlow({
   const [mode, setMode] = useState<AuthMode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
   const [degree, setDegree] = useState("");
   const [schoolDivision, setSchoolDivision] = useState("");
   const [biologicalSex, setBiologicalSex] =
     useState<AuthUserProfile["biologicalSex"]>("prefer-not-to-say");
   const [language, setLanguage] = useState<BansayLanguage>("en");
-  const [lowDataMode, setLowDataMode] = useState(false);
 
   const [degreeQuery, setDegreeQuery] = useState("");
   const [degreeOpen, setDegreeOpen] = useState(false);
@@ -115,7 +117,7 @@ export function SessionStartFlow({
               biologicalSex,
               role: portal,
               preferredLanguage: language,
-              lowDataMode,
+              lowDataMode: false,
             };
 
       const res = await fetch(endpoint, {
@@ -164,29 +166,30 @@ export function SessionStartFlow({
   const isTeacher = portal === "teacher";
 
   return (
-    <main className="bansay-app min-h-[100dvh] bg-[#F7F6FB] px-4 py-8 sm:px-6 sm:py-12 flex items-center justify-center">
-      <div className="mx-auto grid w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:grid-cols-12 items-stretch">
+    <main className="bansay-app auth-page flex min-h-[100dvh] items-center justify-center px-4 py-8 sm:px-6 sm:py-12">
+      <div className="auth-layout mx-auto grid w-full max-w-lg overflow-hidden rounded-[26px] items-stretch">
         {/* Left Portal Selector Column */}
-        <aside className="lg:col-span-5 bg-[#31175B] p-6 sm:p-8 text-white flex flex-col justify-between gap-8">
-          <div className="space-y-6">
-            <div className="flex items-center gap-3">
-              <BansayLogo className="w-9 h-9 shrink-0" light />
+        <aside className="auth-header p-6 sm:p-8 text-white flex flex-col justify-between gap-8">
+          <div className="auth-header-inner space-y-6">
+            <div className="flex flex-col items-center gap-2 text-center">
+              <div className="auth-logo-wrap mb-1 flex h-[76px] w-[76px] items-center justify-center rounded-[22px] bg-white shadow-lg shadow-black/10">
+                <BansayLogo className="h-12 w-12 shrink-0" />
+              </div>
               <div>
-                <p className="font-display text-lg font-extrabold tracking-tight text-white">
+                <p className="auth-masthead text-3xl leading-none tracking-[0.16em] text-white sm:text-4xl">
                   BANSAY
                 </p>
-                <p className="text-xs text-purple-200/80">
-                  Iligan Secondary Pilot
-                </p>
+                <p className="font-display mt-3 text-sm font-medium tracking-wide text-violet-100/90 sm:text-base">para sa bansang mahusay</p>
+                <p className="mt-2 text-sm text-violet-100/85">Your workspace for lesson preparation, teaching practice, and mentorship.</p>
               </div>
             </div>
 
             <div className="space-y-2">
-              <p className="text-xs font-semibold text-purple-200">
+              <p className="text-xs font-semibold text-violet-100/90">
                 Choose your workspace
               </p>
               <div
-                className="grid grid-cols-1 gap-2.5"
+                className="grid grid-cols-2 gap-2 rounded-xl bg-white/10 p-1"
                 role="tablist"
                 aria-label="Account portal"
               >
@@ -195,9 +198,9 @@ export function SessionStartFlow({
                   role="tab"
                   aria-selected={isTeacher}
                   onClick={() => switchPortal("teacher")}
-                  className={`w-full rounded-xl border p-4 text-left transition-colors ${
+                  className={`w-full rounded-lg border p-3 text-left transition-colors ${
                     isTeacher
-                      ? "border-white bg-white text-slate-900 shadow-sm"
+                      ? "border-white bg-white text-violet-900 shadow-sm"
                       : "border-white/15 bg-white/5 text-white hover:bg-white/10"
                   }`}
                 >
@@ -226,9 +229,9 @@ export function SessionStartFlow({
                   role="tab"
                   aria-selected={!isTeacher}
                   onClick={() => switchPortal("mentor")}
-                  className={`w-full rounded-xl border p-4 text-left transition-colors ${
+                  className={`w-full rounded-lg border p-3 text-left transition-colors ${
                     !isTeacher
-                      ? "border-white bg-white text-slate-900 shadow-sm"
+                      ? "border-white bg-white text-violet-900 shadow-sm"
                       : "border-white/15 bg-white/5 text-white hover:bg-white/10"
                   }`}
                 >
@@ -278,7 +281,7 @@ export function SessionStartFlow({
         </aside>
 
         {/* Right Form Column */}
-        <section className="lg:col-span-7 p-6 sm:p-8 flex flex-col justify-between">
+        <section className="auth-card p-6 sm:p-8 flex flex-col justify-between">
           <div>
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -295,18 +298,6 @@ export function SessionStartFlow({
                     : "Create mentor account"}
                 </h1>
               </div>
-            </div>
-
-            <div className="mt-5">
-              <Tabs
-                value={mode}
-                onChange={switchMode}
-                label="Sign in or create account"
-                items={[
-                  { value: "login", label: "Sign in" },
-                  { value: "register", label: "Create account" },
-                ]}
-              />
             </div>
 
             {authError && (
@@ -345,7 +336,7 @@ export function SessionStartFlow({
             )}
 
             <form onSubmit={handleSubmit} noValidate className="mt-6 space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className={`grid gap-4 ${mode === "register" ? "sm:grid-cols-2" : ""}`}>
                 <div>
                   <Field label="Email address">
                     <TextField
@@ -377,19 +368,25 @@ export function SessionStartFlow({
                       mode === "register" ? "Password (min. 8 characters)" : "Password"
                     }
                   >
-                    <TextField
-                      type="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="••••••••"
-                      autoComplete={
-                        mode === "register" ? "new-password" : "current-password"
-                      }
-                      aria-invalid={
-                        submitAttempted &&
-                        (mode === "register" ? password.length < 8 : !password)
-                      }
-                    />
+                    <div className="relative mt-1.5">
+                      <TextField
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Enter your password"
+                        autoComplete={mode === "register" ? "new-password" : "current-password"}
+                        aria-invalid={submitAttempted && (mode === "register" ? password.length < 8 : !password)}
+                        className="pr-12"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((visible) => !visible)}
+                        className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
                   </Field>
                   {submitAttempted &&
                     (mode === "register" ? password.length < 8 : !password) && (
@@ -523,13 +520,6 @@ export function SessionStartFlow({
                       />
                     </Field>
 
-                    <label className="flex min-h-11 items-center gap-2 text-xs font-medium text-slate-700 pb-0.5">
-                      <Checkbox
-                        checked={lowDataMode}
-                        onChange={(e) => setLowDataMode(e.target.checked)}
-                      />
-                      <span>Low-data mode (reduced bandwidth)</span>
-                    </label>
                   </div>
                 </>
               )}

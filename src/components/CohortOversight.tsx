@@ -390,8 +390,8 @@ export function CohortOversight({
                               ? "Mentor-Verified"
                               : "Private Draft"}
                           </strong>{" "}
-                          · Quality check:{" "}
-                          {selectedCase.support.judgeReport.passed ? "Ready" : "Needs review"}
+                          · Automated checks:{" "}
+                          {selectedCase.support.judgeReport.passed ? "Passed; mentor review required" : "Needs review"}
                         </p>
                       </div>
                       <button

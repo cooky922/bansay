@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Plus Jakarta Sans", system-ui, sans-serif;
-  --font-sans: "DM Sans", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: "Inter", system-ui, sans-serif;
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "Inter", system-ui, sans-serif;
 }
 
 :root {
@@ -192,4 +192,45 @@ input[type="checkbox"] { height: 1.125rem; width: 1.125rem; accent-color: var(--
   input, select, textarea {
     font-size: 16px;
   }
+}
+
+/* Focused sign-in surface */
+.auth-page {
+  background:
+    radial-gradient(ellipse at 12% 12%, rgb(139 92 246 / 0.28), transparent 38%),
+    radial-gradient(ellipse at 88% 88%, rgb(91 33 182 / 0.38), transparent 42%),
+    linear-gradient(135deg, #17102f 0%, #31175b 52%, #4c1d95 100%);
+}
+
+.auth-layout { gap: 0; }
+.auth-header { padding: 0 0 1.25rem; gap: 0; }
+.auth-header-inner { width: 100%; }
+@font-face { font-family: "Ahsing"; src: url("/fonts/ahsing.otf") format("opentype"); font-style: normal; font-weight: 400; font-display: swap; }
+.auth-page, .auth-page :where(*) { font-family: var(--font-sans); }
+.auth-masthead { font-family: "Ahsing", Georgia, serif; font-weight: 400; }
+.sidebar-masthead { font-family: "Ahsing", Georgia, serif; font-weight: 400; }
+.auth-header-inner > div:first-child { gap: .35rem; }
+.auth-header-inner > div:first-child > div:nth-child(2) { max-width: 32rem; }
+.auth-header-inner [role="tab"] > p { display: none; }
+.auth-header-inner [role="tab"] { min-height: 2.75rem; padding: .625rem .75rem; }
+.auth-header > div:last-child { display: none; }
+.auth-card {
+  border: 1px solid rgb(255 255 255 / .72);
+  border-radius: 1.5rem;
+  background: #f8f9fc;
+  box-shadow: 0 24px 64px rgb(14 8 38 / .3);
+}
+.auth-card .ui-tabs { margin-top: 1rem; }
+.auth-card .ui-input { min-height: 3rem; border-color: #d5dbe7; box-shadow: 0 1px 3px rgb(15 23 42 / .06); }
+.auth-card .ui-input:focus { border-color: var(--bansay-brand); box-shadow: 0 0 0 3px rgb(109 40 217 / .15); }
+.auth-card form > div:last-child { flex-direction: column; align-items: stretch; gap: 1rem; }
+.auth-card form > div:last-child > div:first-child { text-align: center; }
+.auth-card form > div:last-child > button[type="submit"] { width: 100%; min-height: 3.25rem; box-shadow: 0 7px 16px rgb(76 29 149 / .2); }
+.proficiency-equipment-toggle .ui-checkbox { width: .875rem; height: .875rem; }
+
+@media (max-width: 420px) {
+  .auth-page { align-items: flex-start; padding-top: 2rem; }
+  .auth-header { padding-bottom: 1rem; }
+  .auth-header-inner > div:first-child > div:nth-child(2) p:last-child { max-width: 19rem; margin-inline: auto; }
+  .auth-card { padding: 1.25rem; }
 }

@@ -21,6 +21,9 @@ import {
   computeDaysUntil,
   createLessonCaseRecord,
   findMatchingLacPack,
+  getCachedConceptPack,
+  saveCachedConceptPack,
+  deleteCachedConceptPack,
   getAnySubmittedLessonCase,
   getOwnedLessonCase,
   listMentorReviewQueue,
@@ -376,7 +379,6 @@ app.post("/api/bansay/generate-support", async (req, res) => {
       baselineFirst,
       baselineExplanation,
       usesLabEquipment,
-      imageData,
       uploadedImagePreview,
     } = req.body as {
       subject: SubjectName;
@@ -390,7 +392,6 @@ app.post("/api/bansay/generate-support", async (req, res) => {
       baselineFirst?: boolean;
       baselineExplanation?: string;
       usesLabEquipment?: boolean;
-      imageData?: { mimeType: string; data: string };
       uploadedImagePreview?: string;
     };
 
@@ -417,9 +418,12 @@ app.post("/api/bansay/generate-support", async (req, res) => {
       teacherMajor: chosenMajor,
       language: chosenLanguage,
       careerStage: chosenStage,
-      startingMaterial,
       usesLabEquipment: Boolean(usesLabEquipment),
-      imageData,
+      cache: {
+        get: (key) => getCachedConceptPack(database, key),
+        set: (key, factSheetId, pack) => saveCachedConceptPack(database, key, factSheetId, pack),
+        delete: (key) => deleteCachedConceptPack(database, key),
+      },
     });
 
     const createdCase = createLessonCaseRecord(database, user, {
@@ -444,8 +448,7 @@ app.post("/api/bansay/generate-support", async (req, res) => {
     res.json({
       caseRecord: createdCase,
       matchedLacPack: matchedLac,
-      demo: generated.demo,
-      providerFallback: Boolean(generated.providerFallback),
+      cacheHit: generated.cacheHit,
       ...generated.support,
     });
   } catch (err) {
@@ -869,6 +872,7 @@ Draft concise, encouraging, non-punitive specialist mentor feedback strictly in 
         "Draft concise, encouraging, non-punitive specialist mentor feedback. Return only the schema-compliant JSON object in the requested language.",
       input: prompt,
       schema: MENTOR_FEEDBACK_SCHEMA,
+      modelRole: "rehearsal",
     });
     res.json(parsed);
   } catch (err) {

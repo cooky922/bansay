@@ -103,7 +103,70 @@ export interface LlmJudgeReport {
   notes: string;
 }
 
+export interface ValidatedConceptPack {
+  grounding: {
+    competency: string;
+    evidence_summary: string;
+    sources: Array<{ title: string; url: string }>;
+  };
+  say_in_class: string;
+  mechanism: string;
+  formula: {
+    law: string;
+    equation: string;
+    conditions: string;
+    variables: Array<{
+      symbol: string;
+      definition: string;
+      unit: string;
+    }>;
+  };
+  bridge: {
+    analogy: string;
+    where_it_breaks_down: string;
+  };
+  worked_example: {
+      problem: string;
+    steps: string[];
+      answer: string;
+  };
+  contrast: {
+    error_name: string;
+    wrong_work: string;
+    wrong_result: string;
+    why_wrong: string;
+  };
+  misconceptions: Array<{
+    name: string;
+    what_students_say: string;
+    what_is_really_happening: string;
+    teaching_move: string;
+  }>;
+  self_check: Array<{
+    question: string;
+    options: Array<{
+      text: string;
+      correct: boolean;
+      explanation: string;
+    }>;
+  }>;
+  demo: {
+    title: string;
+    materials: Array<{
+      name: string;
+      amount: string;
+    }>;
+    steps: Array<{
+      number: number;
+      instruction: string;
+    }>;
+    expected_observation: string;
+    safety_note: string;
+  };
+}
+
 export interface GeneratedLessonSupport {
+  validatedPack?: ValidatedConceptPack;
   bigIdea: BigIdeaSection;
   specialtyBridge: SpecialtyBridge;
   contrastiveExamples: ContrastiveWorkedExample[];

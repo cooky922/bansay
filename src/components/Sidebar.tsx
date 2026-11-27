@@ -139,7 +139,7 @@ export function Sidebar({
             <div className="flex items-center gap-2.5">
               <BansayLogo className="w-8 h-8 shrink-0" light />
               <div className="leading-none">
-                <span className="font-display text-lg font-extrabold tracking-tight text-white">
+                <span className="sidebar-masthead text-lg tracking-tight text-white">
                   BANSAY
                 </span>
                 <p className="mt-0.5 whitespace-nowrap text-[11px] text-purple-200/80">

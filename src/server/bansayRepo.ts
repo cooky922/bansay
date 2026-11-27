@@ -29,6 +29,7 @@ import type {
   RehearsalMessage,
   SubjectName,
   UnitEconomicsRow,
+  ValidatedConceptPack,
 } from "../types/bansay.ts";
 import type { BansayDatabase } from "./db.ts";
 
@@ -366,6 +367,36 @@ export function createLessonCaseRecord(
 
 export function seedStarterDataForUser(db: BansayDatabase, _user: AuthUserProfile) {
   ensureInitialSharedLacPacks(db);
+}
+
+export function getCachedConceptPack(db: BansayDatabase, cacheKey: string): unknown | undefined {
+  const row = db
+    .prepare("SELECT pack_json FROM concept_pack_topic_cache WHERE cache_key = ?")
+    .get(cacheKey) as { pack_json: string } | undefined;
+  if (!row) return undefined;
+  try {
+    return JSON.parse(row.pack_json) as unknown;
+  } catch {
+    db.prepare("DELETE FROM concept_pack_topic_cache WHERE cache_key = ?").run(cacheKey);
+    return undefined;
+  }
+}
+
+export function saveCachedConceptPack(
+  db: BansayDatabase,
+  cacheKey: string,
+  factSheetId: string,
+  pack: ValidatedConceptPack
+): void {
+  db.prepare(
+    `INSERT INTO concept_pack_topic_cache (cache_key, fact_sheet_id, pack_json, created_at)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(cache_key) DO UPDATE SET pack_json = excluded.pack_json, created_at = excluded.created_at`
+  ).run(cacheKey, factSheetId, JSON.stringify(pack), new Date().toISOString());
+}
+
+export function deleteCachedConceptPack(db: BansayDatabase, cacheKey: string): void {
+  db.prepare("DELETE FROM concept_pack_topic_cache WHERE cache_key = ?").run(cacheKey);
 }
 
 export function listTeacherCases(db: BansayDatabase, teacherId: string): LessonCase[] {
