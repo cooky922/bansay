@@ -8,7 +8,6 @@ import {
   Sparkles,
   Timer,
   UserCheck,
-  Video,
 } from "lucide-react";
 import type {
   BansayLanguage,
@@ -21,7 +20,6 @@ import type {
   UserRole,
 } from "../types/bansay";
 import { MEDIA_POLICY_TIERS, UI_COPY } from "../data/bansayData";
-import type { LocalMentorRecording } from "../App";
 import { Checkbox } from "./ui";
 import { bansayFetch } from "../lib/apiClient";
 
@@ -56,7 +54,6 @@ interface CohortOversightProps {
   pilotBudget: PilotBudgetRow[];
   unitEconomics: UnitEconomicsRow[];
   directMentorMinutesLogged: number;
-  mentorVideos: Record<string, LocalMentorRecording>;
 }
 
 function formatTimer(seconds: number): string {
@@ -77,7 +74,6 @@ export function CohortOversight({
   pilotBudget,
   unitEconomics,
   directMentorMinutesLogged,
-  mentorVideos,
 }: CohortOversightProps) {
   const copy = UI_COPY[language];
 
@@ -381,7 +377,7 @@ export function CohortOversight({
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div>
                         <p className="text-xs font-semibold text-violet-800">
-                          Concept Pack Review
+                          Quality Check (Review)
                         </p>
                         <p className="text-xs text-slate-600">
                           Status:{" "}
@@ -497,28 +493,6 @@ export function CohortOversight({
                               {asset.expiresAt?.slice(0, 10)})
                             </p>
                           ))}
-                      </div>
-                    )}
-
-                    {mentorVideos[selectedCase.id] && (
-                      <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-3.5 space-y-2">
-                        <p className="flex items-center gap-1.5 text-xs font-semibold text-violet-900">
-                          <Video className="h-3.5 w-3.5" /> Browser-local self-review clip
-                        </p>
-                        {mentorVideos[selectedCase.id].kind === "video" ? (
-                          <video
-                            controls
-                            playsInline
-                            src={mentorVideos[selectedCase.id].url}
-                            className="aspect-video w-full rounded-lg bg-slate-950"
-                          />
-                        ) : (
-                          <audio
-                            controls
-                            src={mentorVideos[selectedCase.id].url}
-                            className="h-9 w-full"
-                          />
-                        )}
                       </div>
                     )}
 

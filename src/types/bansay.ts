@@ -83,7 +83,7 @@ export interface ImprovisedActivity {
 }
 
 export interface SimulatedStudentPrompt {
-  studentName: string;
+
   openingQuestion: string;
   freshCasePrompt: string;
 }
@@ -103,65 +103,130 @@ export interface LlmJudgeReport {
   notes: string;
 }
 
+export type DiagramTemplateType =
+  | "two-panel-comparison"
+  | "process-flow"
+  | "cycle"
+  | "labeled-parts"
+  | "number-line";
+
+export interface ConceptPackDiagram {
+  template: DiagramTemplateType;
+  title: string;
+  caption: string;
+  items: Array<{
+    label: string;
+    detail: string;
+  }>;
+}
+
+export interface FactSheetReference {
+  title: string;
+  type: string;
+  grade: string | number;
+  quarter: string | number;
+  url: string;
+  last_checked: string;
+  page?: string | number;
+  lesson?: string | number;
+}
+
 export interface ValidatedConceptPack {
-  grounding: {
+  curriculum?: {
+    framework: string;
+    competencyCode: string;
     competency: string;
-    evidence_summary: string;
-    sources: Array<{ title: string; url: string }>;
+    sourceTitle: string;
+    sourceUrl: string;
+    references?: FactSheetReference[];
   };
-  say_in_class: string;
-  mechanism: string;
-  formula: {
-    law: string;
-    equation: string;
-    conditions: string;
-    variables: Array<{
-      symbol: string;
+  understand: {
+    big_idea_lines: string[];
+    diagram: ConceptPackDiagram;
+    key_terms: Array<{
+      term: string;
       definition: string;
-      unit: string;
     }>;
   };
-  bridge: {
-    analogy: string;
-    where_it_breaks_down: string;
-  };
-  worked_example: {
-      problem: string;
+  model: {
     steps: string[];
-      answer: string;
+    when_it_applies: string;
+    when_it_does_not_apply: string;
+    formula: {
+      law: string;
+      equation: string;
+      variables: Array<{
+        symbol: string;
+        definition: string;
+        unit: string;
+      }>;
+    };
   };
-  contrast: {
-    error_name: string;
-    wrong_work: string;
-    wrong_result: string;
-    why_wrong: string;
-  };
-  misconceptions: Array<{
-    name: string;
-    what_students_say: string;
-    what_is_really_happening: string;
-    teaching_move: string;
-  }>;
-  self_check: Array<{
-    question: string;
-    options: Array<{
-      text: string;
-      correct: boolean;
+  connect: {
+    short_field_label: string;
+    mappings: Array<{
+      field_feature: string;
+      lesson_concept: string;
       explanation: string;
     }>;
-  }>;
-  demo: {
-    title: string;
-    materials: Array<{
+    where_comparison_stops: string;
+  };
+  worked_example: {
+    kind: "quantitative" | "conceptual";
+    problem: string;
+    steps: string[];
+    answer: string;
+    verification: {
+      expression: string;
+      result: number;
+      unit: string;
+    };
+    common_error: {
+      error_name: string;
+      wrong_work: string;
+      wrong_result: string;
+      why_wrong: string;
+    };
+  };
+  misconceptions: {
+    prediction_prompt: string;
+    items: Array<{
       name: string;
-      amount: string;
+      what_students_say: string;
+      what_is_really_happening: string;
+      teaching_move: string;
     }>;
-    steps: Array<{
-      number: number;
-      instruction: string;
+  };
+  self_check: {
+    questions: Array<{
+      question: string;
+      options: Array<{
+        text: string;
+        correct: boolean;
+        explanation: string;
+      }>;
     }>;
-    expected_observation: string;
-    safety_note: string;
+  };
+  teach_it: {
+    say_in_class_lines: string[];
+    activity: {
+      title: string;
+      time_needed: string;
+      prepare_before_class: string;
+      materials: Array<{
+        name: string;
+        amount: string;
+      }>;
+      predict_prompt: string;
+      steps: Array<{
+        number: number;
+        instruction: string;
+      }>;
+      observe_prompt: string;
+      explain_prompt: string;
+      scale_note: string;
+      safety_note: string;
+    };
   };
 }
 
@@ -183,6 +248,11 @@ export interface RehearsalMessage {
   sender: "student" | "teacher";
   text: string;
   timestamp: string;
+  opening?: boolean;
+  studentName?: string;
+  scripted?: boolean;
+  sharedWithMentor?: boolean;
+  closing?: "understood" | "turn-limit" | "finished";
   attachmentType?: "text" | "voice-note" | "video-note" | "handwritten-photo";
 }
 

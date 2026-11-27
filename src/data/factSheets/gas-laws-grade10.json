@@ -76,10 +76,20 @@
     "1.10 atm"
   ],
   "rehearsalPrompt": {
-    "studentName": "Jessa",
     "openingQuestion": "If the bottle is sealed and its volume stays fixed, why does its pressure rise when the air inside warms?",
     "freshCasePrompt": "Explain why the pressure of gas in a rigid container changes when its kelvin temperature changes, while the volume and amount of gas stay fixed."
   },
+  "references": [
+    {
+      "title": "EASE/OHSP II Module 9: Gas Laws",
+      "type": "Learning module",
+      "grade": 10,
+      "quarter": 4,
+      "lesson": "Module 9",
+      "url": "https://lrmds.deped.gov.ph/detail/7672",
+      "last_checked": "2026-11-27"
+    }
+  ],
   "source": {
     "title": "K to 12 Basic Education Curriculum: Science Curriculum Guide, Grade 10 – Matter",
     "competencyCode": "S10MT-IVa-b-21",

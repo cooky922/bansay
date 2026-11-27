@@ -165,6 +165,11 @@ function hydrateLessonCase(db: BansayDatabase, row: Record<string, unknown>): Le
     sender: turn.sender as "student" | "teacher",
     text: String(turn.text),
     timestamp: String(turn.timestamp_label),
+    opening: Boolean(turn.is_opening),
+    studentName: typeof turn.student_name === "string" ? turn.student_name : undefined,
+    scripted: Boolean(turn.is_scripted),
+    sharedWithMentor: Boolean(turn.shared_with_mentor),
+    closing: (turn.closing_reason ?? undefined) as RehearsalMessage["closing"],
     attachmentType: turn.attachment_type as RehearsalMessage["attachmentType"],
   }));
 

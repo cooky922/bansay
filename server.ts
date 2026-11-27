@@ -4,7 +4,7 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { generateOpenRouterJson, generateOpenRouterText, hasOpenRouterProvider } from "./src/server/aiProviders.ts";
+import { generateOpenRouterJson, hasAnyAiProvider } from "./src/server/aiProviders.ts";
 import {
   createSession,
   currentUser,
@@ -34,6 +34,9 @@ import {
   seedStarterDataForUser,
 } from "./src/server/bansayRepo.ts";
 import { generateValidatedConceptPack, languageName } from "./src/server/conceptPackEngine.ts";
+import { shortFieldName } from "./src/server/conceptPackValidator.ts";
+import { closingLearnerMessage, containsContactInfo, containsTopicTitle, currentRehearsal, isStudentName, MAX_REHEARSAL_REPLY_LENGTH, openingLearnerMessage, pickStudentName, rehearsalGradeLabel, rehearsalStudentName, REHEARSAL_LIMIT, scriptedClosing, scriptedLearnerReply, withoutOpeningGreeting } from "./src/lib/rehearsal.ts";
+import { learnerModelRequest } from "./src/server/rehearsalLearner.ts";
 import { openDatabase } from "./src/server/db.ts";
 import type {
   AuthUserProfile,
@@ -42,6 +45,8 @@ import type {
   ClassroomEvidenceItem,
   GeneratedLessonSupport,
   MediaTier,
+  LessonCase,
+  RehearsalMessage,
   SubjectName,
 } from "./src/types/bansay.ts";
 
@@ -54,12 +59,12 @@ const database = openDatabase();
 function extractApiError(err: unknown): { status: number; message: string } {
   const errorObj = err as { status?: number; message?: string };
   const status = typeof errorObj?.status === "number" ? errorObj.status : 500;
-  const rawMessage = errorObj?.message || "Unexpected server error while contacting OpenRouter API.";
+  const rawMessage = errorObj?.message || "Unexpected server error while contacting AI provider.";
   return { status, message: rawMessage };
 }
 
 function isDemoMode(): boolean {
-  return !hasOpenRouterProvider();
+  return !hasAnyAiProvider();
 }
 
 const MENTOR_FEEDBACK_SCHEMA = {
@@ -75,119 +80,7 @@ const MENTOR_FEEDBACK_SCHEMA = {
   required: ["focusedGap", "teachingMove", "quickRefresher", "masteredSkill", "practiceSkill"],
 } as const;
 
-const REHEARSAL_LANGUAGES = new Set(["en", "fil", "ceb"]);
-const REHEARSAL_SUBJECTS = new Set(["Science", "Mathematics", "English"]);
-const MAX_REHEARSAL_HISTORY = 13;
-const MAX_REHEARSAL_FOLLOW_UPS = 5;
-const MAX_REHEARSAL_MESSAGE_LENGTH = 2_000;
-const MAX_REHEARSAL_REPLY_LENGTH = 600;
-
-type RehearsalTurn = { sender: "student" | "teacher"; text: string };
-
-function normalizeRehearsalText(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9à-ÿ]+/gi, " ").trim();
-}
-
-function validateRehearsalHistory(history: unknown): RehearsalTurn[] | null {
-  if (!Array.isArray(history) || history.length < 1 || history.length > MAX_REHEARSAL_HISTORY) {
-    return null;
-  }
-  const turns: RehearsalTurn[] = [];
-  for (let index = 0; index < history.length; index += 1) {
-    const turn = history[index] as { sender?: unknown; text?: unknown };
-    const expectedSender = index % 2 === 0 ? "student" : "teacher";
-    if (
-      turn?.sender !== expectedSender ||
-      typeof turn.text !== "string" ||
-      !turn.text.trim() ||
-      turn.text.trim().length > MAX_REHEARSAL_MESSAGE_LENGTH
-    ) {
-      return null;
-    }
-    turns.push({ sender: expectedSender, text: turn.text.trim() });
-  }
-  return turns;
-}
-
-function isUnsafeOrOffRoleStudentReply(reply: string): boolean {
-  const normalized = normalizeRehearsalText(reply);
-  return (
-    !normalized ||
-    normalized.includes("as an ai") ||
-    normalized.includes("system prompt") ||
-    normalized.includes("teacher score") ||
-    normalized.includes("you passed") ||
-    normalized.includes("you failed")
-  );
-}
-
-function demoRehearsalReply({
-  language,
-  studentName,
-  topic,
-  teacherMessage,
-  followUpCount,
-}: {
-  language: string;
-  studentName: string;
-  topic: string;
-  teacherMessage: string;
-  followUpCount: number;
-}) {
-  const understandsDissolving =
-    /still.*sugar|dissolved|molecule|particle|spread|not.*disappear|hindi.*nawala|wala.*nawala|dili.*nawala/i.test(
-      teacherMessage
-    );
-  const understandsFiltration =
-    /strainer|filter|mesh|sand|cloth|salain|salaan|sal-a|panala/i.test(teacherMessage);
-  const understandsInertia =
-    /inertia|stay(?:s|ing)? (?:at )?(?:rest|still|in motion)|body (?:tries to )?stay|resist(?:s|ing)? change/i.test(
-      teacherMessage
-    );
-  const topicIsSugar = /sugar|asukal|dissolv|solution|mixture/i.test(topic);
-  const topicIsInertia = /inertia|newton|motion|jeepney|force/i.test(topic);
-  const name = studentName || "Jessa";
-
-  if (language === "fil") {
-    if (topicIsInertia && understandsInertia) {
-      return "Naiintindihan ko na po kung bakit nananatiling nasa dating galaw ang katawan ko. Handa na po akong magbigay ng sarili kong halimbawa.";
-    }
-    if (topicIsSugar && understandsDissolving && !understandsFiltration) {
-      return `Salamat po, ${name} ito. Kung ang asukal ay nandoon pa rin, bakit nakakalusot ito sa salaan samantalang naiwan ang buhangin?`;
-    }
-    if (topicIsSugar && understandsDissolving && understandsFiltration) {
-      return "Naiintindihan ko na po: hindi nawala ang asukal at mas maliit ito kaysa sa butas ng salaan. Paano natin mapapatunayang naroon pa rin ito?";
-    }
-    return `Naiintindihan ko ang halimbawa, pero alin ang nagbago at alin ang hindi nagbago sa ${topic}?`;
-  }
-
-  if (language === "ceb") {
-    if (topicIsInertia && understandsInertia) {
-      return "Nasabtan nako nganong magpabilin sa daang lihok ang akong lawas. Andam na ko mohatag og akong kaugalingong pananglitan.";
-    }
-    if (topicIsSugar && understandsDissolving && !understandsFiltration) {
-      return `Salamat, si ${name} ni. Kung naa pa gihapon ang asukal, nganong makalusot man kini sa salaan apan mabilin ang balas?`;
-    }
-    if (topicIsSugar && understandsDissolving && understandsFiltration) {
-      return "Nasabtan nako: wala mawala ang asukal ug mas gamay kini kaysa mga lungag sa salaan. Unsaon nato pagpamatuod nga naa pa kini?";
-    }
-    return `Nasabtan nako ang pananglitan, apan unsa man ang nausab ug unsa ang nagpabilin sa ${topic}?`;
-  }
-
-  if (topicIsSugar && understandsDissolving && !understandsFiltration) {
-    return "Thanks. I understand that the sugar is still there. Why does it pass through the strainer while sand stays behind?";
-  }
-  if (topicIsSugar && understandsDissolving && understandsFiltration) {
-    return "I understand that the sugar did not disappear and is smaller than the strainer spaces. How could we show that it is still in the water?";
-  }
-  if (topicIsInertia && understandsInertia) {
-    return "I understand why my body keeps its earlier motion now. I am ready to give my own example.";
-  }
-  if (followUpCount > 0) {
-    return `I hear the example, but I am still unsure about the reason. What evidence would show why ${topic} works that way?`;
-  }
-  return `I understand the example, but what changed and what stayed the same in ${topic}? How could we check that?`;
-}
+const SUPPORTED_PACK_SUBJECTS = new Set(["Science", "Mathematics", "English"]);
 
 function createDemoMentorFeedback(language: string) {
   if (language === "fil") {
@@ -380,6 +273,7 @@ app.post("/api/bansay/generate-support", async (req, res) => {
       baselineExplanation,
       usesLabEquipment,
       uploadedImagePreview,
+      factSheet,
     } = req.body as {
       subject: SubjectName;
       gradeLevel: string;
@@ -393,6 +287,7 @@ app.post("/api/bansay/generate-support", async (req, res) => {
       baselineExplanation?: string;
       usesLabEquipment?: boolean;
       uploadedImagePreview?: string;
+      factSheet?: unknown;
     };
 
     const chosenMajor = (teacherMajor || user.major || user.degree || "MAPEH").trim();
@@ -403,8 +298,8 @@ app.post("/api/bansay/generate-support", async (req, res) => {
       : user.careerStage || "2";
     const chosenDate = classDate || new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
 
-    if (!REHEARSAL_SUBJECTS.has(subject) || !topic?.trim() || !chosenMajor) {
-      res.status(400).json({ error: "Subject, DepEd topic, and teacher college major are required." });
+    if (!SUPPORTED_PACK_SUBJECTS.has(subject) || !topic?.trim() || !chosenMajor) {
+      res.status(400).json({ error: "Subject, lesson topic, and teacher college major are required." });
       return;
     }
 
@@ -416,9 +311,11 @@ app.post("/api/bansay/generate-support", async (req, res) => {
       gradeLevel: gradeLevel || "Grade 7",
       topic: topic.trim(),
       teacherMajor: chosenMajor,
+      teacherDegree: user.degree || "",
       language: chosenLanguage,
       careerStage: chosenStage,
       usesLabEquipment: Boolean(usesLabEquipment),
+      customFactSheetInput: factSheet,
       cache: {
         get: (key) => getCachedConceptPack(database, key),
         set: (key, factSheetId, pack) => saveCachedConceptPack(database, key, factSheetId, pack),
@@ -521,6 +418,11 @@ app.post("/api/bansay/cases/:id/media", (req, res) => {
       label: string;
     };
 
+    if (tier === "cot-video" && process.env.VITE_BANSAY_PHASE_2 !== "true") {
+      res.status(403).json({ error: "Classroom clips are unavailable." });
+      return;
+    }
+
     const asset = addMediaMetadataRecord(database, owned.id, user.id, {
       tier,
       step: step === 2 || step === 7 ? step : 4,
@@ -549,215 +451,148 @@ app.delete("/api/bansay/cases/:id/media/:mediaId", (req, res) => {
   res.json({ caseRecord: getOwnedLessonCase(database, owned.id, user.id) });
 });
 
+async function learnerReply({
+  lesson, user, studentName, language, turn, round, teacherMessage, scripted, finish = false,
+}: {
+  lesson: LessonCase;
+  user: AuthUserProfile;
+  studentName: string;
+  language: BansayLanguage;
+  turn: number;
+  round: RehearsalMessage[];
+  teacherMessage?: string;
+  scripted?: boolean;
+  finish?: boolean;
+}) {
+  const opening = !finish && turn === 0;
+  let closing: RehearsalMessage["closing"] = finish ? "finished" : turn >= REHEARSAL_LIMIT ? "turn-limit" : undefined;
+  let reply = closing ? scriptedClosing(language) : scriptedLearnerReply(lesson, language, turn);
+  let isScripted = true;
+
+  if (!scripted && !isDemoMode()) {
+    try {
+      const output = await generateOpenRouterJson<{ reply: string; understood: boolean }>({
+        name: "simulated_learner_reply",
+        modelRole: "rehearsal",
+        schema: {
+          type: "object",
+          properties: { reply: { type: "string" }, understood: { type: "boolean" } },
+          required: ["reply", "understood"],
+          additionalProperties: false,
+        },
+        ...learnerModelRequest({
+          lesson, gradeLabel: rehearsalGradeLabel(lesson.gradeLevel), studentName,
+          language, turn, round, teacherMessage, teacherName: user.displayName, finish,
+        }),
+      });
+      const rawReply = output.reply?.trim();
+      const candidate = rawReply && withoutOpeningGreeting(rawReply);
+      const understood = turn >= 2 && output.understood === true;
+      const questions = candidate?.match(/\?/g)?.length ?? 0;
+      if (candidate && rawReply.length <= MAX_REHEARSAL_REPLY_LENGTH &&
+          questions === (closing || understood ? 0 : 1) &&
+          !containsTopicTitle(candidate, lesson.topic) && !containsContactInfo(candidate) &&
+          !/system prompt|as an ai|you (passed|failed)|well done|great job/i.test(candidate) &&
+          (opening || !round.some((message) => message.sender === "student" && withoutOpeningGreeting(message.text) === candidate))) {
+        reply = candidate;
+        isScripted = false;
+        if (understood && !finish) closing = "understood";
+      }
+    } catch {
+      // The script also works when the provider is unavailable.
+    }
+  }
+
+  if (opening) reply = openingLearnerMessage(reply, user.displayName);
+  if (closing) reply = closingLearnerMessage(reply, language, user.displayName);
+  return { reply, isScripted, closing };
+}
+
 app.post("/api/bansay/rehearse", async (req, res) => {
   const user = requireAuth(req, res);
   if (!user) return;
-  try {
-    const {
-      caseId,
-      subject,
-      gradeLevel,
-      topic,
-      language,
-      studentName,
-      history,
-      teacherMessage,
-      attachmentType,
-    } = req.body as {
-      caseId?: string;
-      subject: string;
-      gradeLevel: string;
-      topic: string;
-      language: string;
-      studentName: string;
-      history: Array<{ sender: "student" | "teacher"; text: string }>;
-      teacherMessage: string;
-      attachmentType?: "text" | "voice-note" | "video-note" | "handwritten-photo";
-    };
-
-    const canonicalHistory = validateRehearsalHistory(history);
-    const trimmedTeacherMessage = typeof teacherMessage === "string" ? teacherMessage.trim() : "";
-
-    if (
-      typeof subject !== "string" ||
-      typeof language !== "string" ||
-      typeof gradeLevel !== "string" ||
-      typeof topic !== "string" ||
-      typeof studentName !== "string" ||
-      !REHEARSAL_SUBJECTS.has(subject) ||
-      !REHEARSAL_LANGUAGES.has(language) ||
-      !gradeLevel.trim() ||
-      gradeLevel.length > 40 ||
-      !topic.trim() ||
-      topic.length > 300 ||
-      !studentName.trim() ||
-      studentName.length > 60 ||
-      !trimmedTeacherMessage ||
-      trimmedTeacherMessage.length > MAX_REHEARSAL_MESSAGE_LENGTH ||
-      !canonicalHistory
-    ) {
-      res.status(400).json({ error: "The rehearsal request is incomplete or has an invalid conversation history." });
-      return;
-    }
-
-    const ownedCase = caseId ? getOwnedLessonCase(database, caseId, user.id) : null;
-    if (caseId && !ownedCase) {
-      res.status(404).json({ error: "Lesson session not found." });
-      return;
-    }
-
-    const followUpCount = canonicalHistory.filter((turn) => turn.sender === "student").length - 1;
-    if (followUpCount >= MAX_REHEARSAL_FOLLOW_UPS) {
-      res.json({ ended: true, reason: "turn-limit", reply: "", demo: isDemoMode() });
-      return;
-    }
-
-    const persistTurns = (studentReplyText: string) => {
-      if (!ownedCase) return;
-      const now = new Date().toISOString();
-      const timeLabel = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-      const baseIndex = ownedCase.rehearsalMessages.length;
-      database.transaction(() => {
-        database
-          .prepare(
-            `INSERT INTO rehearsal_turns (id, session_id, turn_index, sender, text, attachment_type, timestamp_label, created_at)
-             VALUES (?, ?, ?, 'teacher', ?, ?, ?, ?)`
-          )
-          .run(
-            `msg-${crypto.randomUUID()}`,
-            ownedCase.id,
-            baseIndex,
-            trimmedTeacherMessage,
-            attachmentType || "text",
-            timeLabel,
-            now
-          );
-        database
-          .prepare(
-            `INSERT INTO rehearsal_turns (id, session_id, turn_index, sender, text, attachment_type, timestamp_label, created_at)
-             VALUES (?, ?, ?, 'student', ?, 'text', ?, ?)`
-          )
-          .run(
-            `msg-${crypto.randomUUID()}`,
-            ownedCase.id,
-            baseIndex + 1,
-            studentReplyText,
-            timeLabel,
-            now
-          );
-        database
-          .prepare("UPDATE lesson_sessions SET updated_at = ? WHERE id = ?")
-          .run(now, ownedCase.id);
-      })();
-    };
-
-    if (isDemoMode()) {
-      const reply = demoRehearsalReply({
-        language,
-        studentName,
-        topic,
-        teacherMessage: trimmedTeacherMessage,
-        followUpCount,
-      });
-      persistTurns(reply);
-      res.json({
-        demo: true,
-        state: followUpCount >= MAX_REHEARSAL_FOLLOW_UPS - 1 ? "turn-limit" : "probing",
-        reply,
-        caseRecord: ownedCase ? getOwnedLessonCase(database, ownedCase.id, user.id) : undefined,
-      });
-      return;
-    }
-
-    const targetLang = languageName(language || "en");
-    const transcript = canonicalHistory
-      .slice(-8)
-      .map((m) => `${m.sender === "student" ? studentName : "Teacher"}: ${m.text}`)
-      .join("\n");
-
-    const instructions = `You are roleplaying as a real Filipino secondary school student (${studentName || "Jessa"}) in ${gradeLevel || "Grade 7"} in Iligan City during a teacher's lesson rehearsal.
-Speak strictly in ${targetLang} in a natural, respectful classroom tone using 1 to 2 short conversational sentences. Match the vocabulary and background knowledge to ${gradeLevel}. Never supply the correct explanation, answer your own question, or act like a tutor/evaluator. Keep the reply under ${MAX_REHEARSAL_REPLY_LENGTH} characters.`;
-    const input = `Trusted lesson context:
-Subject: ${subject}
-Grade: ${gradeLevel}
-Topic: ${topic}
-Language: ${targetLang}
-Follow-up number: ${followUpCount + 1} of ${MAX_REHEARSAL_FOLLOW_UPS}
-
-Canonical conversation:
-${transcript}
-
-<teacher-message>
-${trimmedTeacherMessage}
-</teacher-message>
-
-Respond only as ${studentName}, the simulated learner.`;
-
-    const reply = await generateOpenRouterText({ instructions, input });
-    const trimmedReply = reply.trim();
-    const hasRepeatedReply = canonicalHistory.some(
-      (turn) => turn.sender === "student" && normalizeRehearsalText(turn.text) === normalizeRehearsalText(trimmedReply)
-    );
-    if (
-      trimmedReply.length > MAX_REHEARSAL_REPLY_LENGTH ||
-      isUnsafeOrOffRoleStudentReply(trimmedReply) ||
-      hasRepeatedReply
-    ) {
-      res.status(502).json({ error: "The simulated learner response was not usable. Please try again." });
-      return;
-    }
-
-    persistTurns(trimmedReply);
-    res.json({
-      reply: trimmedReply,
-      state: followUpCount >= MAX_REHEARSAL_FOLLOW_UPS - 1 ? "turn-limit" : "probing",
-      caseRecord: ownedCase ? getOwnedLessonCase(database, ownedCase.id, user.id) : undefined,
-    });
-  } catch (err) {
-    const { status, message } = extractApiError(err);
-    if (status === 402 || status === 429 || status >= 500) {
-      const { caseId, language, studentName, topic, teacherMessage, history, attachmentType } = req.body as {
-        caseId?: string;
-        language: string;
-        studentName: string;
-        topic: string;
-        teacherMessage: string;
-        history: RehearsalTurn[];
-        attachmentType?: "text" | "voice-note" | "video-note" | "handwritten-photo";
-      };
-      const followUpCount = Array.isArray(history) ? history.filter((turn) => turn.sender === "student").length - 1 : 0;
-      const fallbackReply = demoRehearsalReply({ language, studentName, topic, teacherMessage, followUpCount });
-      const owned = caseId ? getOwnedLessonCase(database, caseId, user.id) : null;
-      if (owned) {
-        const now = new Date().toISOString();
-        const timeLabel = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-        const baseIndex = owned.rehearsalMessages.length;
-        database.transaction(() => {
-          database.prepare(
-            `INSERT INTO rehearsal_turns (id, session_id, turn_index, sender, text, attachment_type, timestamp_label, created_at)
-             VALUES (?, ?, ?, 'teacher', ?, ?, ?, ?)`
-          ).run(`msg-${crypto.randomUUID()}`, owned.id, baseIndex, teacherMessage.trim(), attachmentType || "text", timeLabel, now);
-          database.prepare(
-            `INSERT INTO rehearsal_turns (id, session_id, turn_index, sender, text, attachment_type, timestamp_label, created_at)
-             VALUES (?, ?, ?, 'student', ?, 'text', ?, ?)`
-          ).run(`msg-${crypto.randomUUID()}`, owned.id, baseIndex + 1, fallbackReply, timeLabel, now);
-          database.prepare("UPDATE lesson_sessions SET updated_at = ? WHERE id = ?").run(now, owned.id);
-        })();
-      }
-      res.json({
-        demo: true,
-        providerFallback: true,
-        state: followUpCount >= MAX_REHEARSAL_FOLLOW_UPS - 1 ? "turn-limit" : "probing",
-        reply: fallbackReply,
-        caseRecord: owned ? getOwnedLessonCase(database, owned.id, user.id) : undefined,
-      });
-      return;
-    }
-    res.status(status).json({ error: message });
+  const { caseId, requestId, teacherMessage, expectedCount, scripted, restart, language, studentName: proposedName } = req.body;
+  if (typeof caseId !== "string" || typeof requestId !== "string" ||
+      !/^[a-f0-9-]{36}$/i.test(requestId) ||
+      !["en", "fil", "ceb"].includes(language) ||
+      !Number.isInteger(expectedCount) ||
+      (teacherMessage !== undefined && (typeof teacherMessage !== "string" ||
+        !teacherMessage.trim() || teacherMessage.length > 2000 || containsContactInfo(teacherMessage)))) {
+    res.status(400).json({ error: "Use a response under 2,000 characters without contact details." });
+    return;
   }
+
+  const lesson = getOwnedLessonCase(database, caseId, user.id);
+  if (!lesson) {
+    res.status(404).json({ error: "Lesson session not found." });
+    return;
+  }
+  const messages = lesson.rehearsalMessages;
+  const opening = teacherMessage === undefined;
+  const replyId = `learner-${requestId}`;
+  const snapshot = () => ({ caseRecord: getOwnedLessonCase(database, caseId, user.id) });
+  if (messages.some((message) => message.id === replyId)) {
+    res.json(snapshot());
+    return;
+  }
+  const round = currentRehearsal(messages);
+  if (opening && !restart && (round[0]?.opening || round.length > 1)) {
+    res.json(snapshot());
+    return;
+  }
+  const completedTurns = round.filter((message) => message.sender === "teacher").length;
+  if (messages.length !== expectedCount ||
+      (!opening && (!round.length || (round.at(-1)?.closing || round.at(-1)?.sharedWithMentor) || completedTurns >= REHEARSAL_LIMIT)) ||
+      (opening && restart && !round.at(-1)?.closing && !round.at(-1)?.sharedWithMentor && completedTurns < REHEARSAL_LIMIT)) {
+    res.status(409).json({ error: "This rehearsal changed. Reopen the conversation before sending again." });
+    return;
+  }
+
+  const mostRecentName = () => (database.prepare(
+    "SELECT t.student_name FROM rehearsal_turns t JOIN lesson_sessions s ON s.id = t.session_id WHERE s.teacher_id = ? AND t.student_name IS NOT NULL ORDER BY t.rowid DESC LIMIT 1"
+  ).get(user.id) as { student_name: string } | undefined)?.student_name;
+  const previousName = opening ? mostRecentName() : undefined;
+  const studentName = opening
+    ? scripted === true && isStudentName(proposedName) && proposedName !== previousName
+      ? proposedName
+      : pickStudentName(previousName)
+    : rehearsalStudentName(round) ?? pickStudentName();
+  const { reply, isScripted, closing } = await learnerReply({
+    lesson, user, studentName, language, turn: opening ? 0 : completedTurns + 1,
+    round, teacherMessage: teacherMessage?.trim(), scripted,
+  });
+
+  const saved = database.transaction(() => {
+    const latest = getOwnedLessonCase(database, caseId, user.id)?.rehearsalMessages ?? [];
+    if (latest.some((message) => message.id === replyId)) return true;
+    if (latest.length !== expectedCount || latest.at(-1)?.id !== messages.at(-1)?.id ||
+        (opening && mostRecentName() === studentName)) return false;
+    const now = new Date();
+    const timestamp = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const insert = database.prepare(
+      "INSERT INTO rehearsal_turns (id, session_id, turn_index, sender, text, attachment_type, timestamp_label, created_at, is_opening, is_scripted, closing_reason, student_name) VALUES (?, ?, ?, ?, ?, 'text', ?, ?, ?, ?, ?, ?)"
+    );
+    const replacesSeed = opening && !restart && messages.length === 1;
+    let index = messages.length;
+    if (replacesSeed) {
+      database.prepare("DELETE FROM rehearsal_turns WHERE id = ?").run(messages[0].id);
+      index = 0;
+    }
+    if (!opening) {
+      insert.run(`teacher-${requestId}`, caseId, index++, "teacher", teacherMessage.trim(), timestamp, now.toISOString(), 0, 0, null, null);
+    }
+    insert.run(replyId, caseId, index, "student", reply, timestamp, now.toISOString(), Number(opening), Number(isScripted), closing ?? null, opening ? studentName : null);
+    database.prepare("UPDATE lesson_sessions SET updated_at = ? WHERE id = ?").run(now.toISOString(), caseId);
+    return true;
+  })();
+  if (!saved) {
+    res.status(409).json({ error: "This rehearsal changed in another window. Reopen it to continue." });
+    return;
+  }
+  res.json(snapshot());
 });
 
-app.post("/api/bansay/cases/:id/submit-review", (req, res) => {
+app.post("/api/bansay/cases/:id/submit-review", async (req, res) => {
   const user = requireAuth(req, res);
   if (!user) return;
   const owned = getOwnedLessonCase(database, String(req.params.id), user.id);
@@ -766,6 +601,21 @@ app.post("/api/bansay/cases/:id/submit-review", (req, res) => {
     return;
   }
 
+  const round = currentRehearsal(owned.rehearsalMessages);
+  const lastMessage = round.at(-1);
+  if (!lastMessage || !round.some((message) => message.sender === "teacher")) {
+    res.status(409).json({ error: "Complete a learner exchange before sending it to your mentor." });
+    return;
+  }
+  if (lastMessage.sharedWithMentor) {
+    res.json({ caseRecord: owned });
+    return;
+  }
+  const language = user.preferredLanguage;
+  const closingReply = lastMessage.closing ? undefined : await learnerReply({
+    lesson: owned, user, studentName: rehearsalStudentName(round) ?? pickStudentName(),
+    language, turn: round.filter((message) => message.sender === "teacher").length, round, finish: true,
+  });
   const mentor = mentorForSubject(owned.subject);
   const queueLabel =
     owned.leadTimeTier === "standard-sla"
@@ -773,7 +623,20 @@ app.post("/api/bansay/cases/:id/submit-review", (req, res) => {
       : "Submitted · Best-effort / Post-class verification queue";
   const now = new Date().toISOString();
 
-  database.transaction(() => {
+  const submitted = database.transaction(() => {
+    const latest = getOwnedLessonCase(database, owned.id, user.id)?.rehearsalMessages.at(-1);
+    if (latest?.id !== lastMessage.id) return latest?.sharedWithMentor === true;
+    if (latest.sharedWithMentor) return true;
+    if (closingReply) {
+      database.prepare(
+        "INSERT INTO rehearsal_turns (id, session_id, turn_index, sender, text, attachment_type, timestamp_label, created_at, is_scripted, closing_reason, shared_with_mentor) VALUES (?, ?, ?, 'student', ?, 'text', ?, ?, ?, 'finished', 1)"
+      ).run(
+        `msg-${crypto.randomUUID()}`, owned.id, owned.rehearsalMessages.length, closingReply.reply,
+        new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), now, Number(closingReply.isScripted),
+      );
+    } else {
+      database.prepare("UPDATE rehearsal_turns SET shared_with_mentor = 1 WHERE id = ?").run(lastMessage.id);
+    }
     database
       .prepare(
         `UPDATE mentor_reviews
@@ -783,7 +646,12 @@ app.post("/api/bansay/cases/:id/submit-review", (req, res) => {
       )
       .run(mentor.name, mentor.affiliation, queueLabel, owned.leadTimeTier, owned.id);
     database.prepare("UPDATE lesson_sessions SET updated_at = ? WHERE id = ?").run(now, owned.id);
+    return true;
   })();
+  if (!submitted) {
+    res.status(409).json({ error: "This rehearsal changed in another window. Try sending it again." });
+    return;
+  }
 
   res.json({ caseRecord: getOwnedLessonCase(database, owned.id, user.id) });
 });
@@ -852,7 +720,7 @@ app.post("/api/bansay/mentor-assist", async (req, res) => {
     const targetLang = languageName(language || "en");
     const prompt = `Subject: ${subject}
 Topic: ${topic}
-Teacher's College Major: ${teacherMajor}
+Teacher's Field Background: ${shortFieldName(teacherMajor || "General Education")}
 Output Language: ${targetLang}
 
 Teacher's Initial Rehearsal Explanation:
@@ -917,8 +785,18 @@ app.post("/api/bansay/cases/:id/verify-pack", (req, res) => {
     .prepare("SELECT * FROM concept_packs WHERE session_id = ?")
     .get(caseRecord.id) as { initial_json: string; current_json: string } | undefined;
   const initialPack = JSON.parse(packRow?.initial_json || JSON.stringify(caseRecord.support)) as GeneratedLessonSupport;
+  const updatedLimitation = (limitationNote ?? caseRecord.support.specialtyBridge.limitationNote).trim();
   const updatedPack: GeneratedLessonSupport = {
     ...caseRecord.support,
+    validatedPack: caseRecord.support.validatedPack
+      ? {
+          ...caseRecord.support.validatedPack,
+          connect: {
+            ...caseRecord.support.validatedPack.connect,
+            where_comparison_stops: updatedLimitation,
+          },
+        }
+      : undefined,
     bigIdea: {
       ...caseRecord.support.bigIdea,
       summary: (bigIdeaSummary ?? caseRecord.support.bigIdea.summary).trim(),
@@ -926,7 +804,7 @@ app.post("/api/bansay/cases/:id/verify-pack", (req, res) => {
     specialtyBridge: {
       ...caseRecord.support.specialtyBridge,
       explanation: (bridgeExplanation ?? caseRecord.support.specialtyBridge.explanation).trim(),
-      limitationNote: (limitationNote ?? caseRecord.support.specialtyBridge.limitationNote).trim(),
+      limitationNote: updatedLimitation,
     },
   };
 

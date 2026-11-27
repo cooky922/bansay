@@ -657,7 +657,7 @@ export const INITIAL_CASES: LessonCase[] = [
         usesLabEquipment: false,
       },
       simulatedStudentPrompt: {
-        studentName: "Jessa",
+
         openingQuestion: TRILINGUAL_SUGAR_CASE.en.studentQuestion,
         freshCasePrompt: TRILINGUAL_SUGAR_CASE.en.freshCasePrompt,
       },

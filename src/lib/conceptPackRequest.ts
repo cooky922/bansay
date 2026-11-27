@@ -1,5 +1,5 @@
 export const CONCEPT_PACK_UNAVAILABLE_MESSAGE =
-  "Concept Pack unavailable. Please request a mentor-written pack for this lesson topic.";
+  "This pack is unavailable. Request a mentor-prepared pack.";
 
 export async function requestConceptPack<T>(generate: () => Promise<T>): Promise<
   | { ok: true; value: T }

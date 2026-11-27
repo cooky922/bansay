@@ -3,6 +3,7 @@ import { Loader2 } from "lucide-react";
 import { Sidebar } from "./components/Sidebar";
 import { TopBar } from "./components/TopBar";
 import { LessonPrepStudio } from "./components/LessonPrepStudio";
+import type { RehearsalRequest } from "./lib/rehearsal";
 import { RehearsalReview } from "./components/RehearsalReview";
 import { CpdPortfolio } from "./components/CpdPortfolio";
 import { CohortOversight } from "./components/CohortOversight";
@@ -37,11 +38,6 @@ import {
   UNIT_ECONOMICS_TABLE,
 } from "./data/bansayData";
 
-export type LocalMentorRecording = {
-  url: string;
-  kind: "voice" | "video";
-};
-
 type WorkspacePayload = {
   user: AuthUserProfile;
   cases: LessonCase[];
@@ -62,7 +58,6 @@ export default function App() {
   const [activeSection, setActiveSection] = useState<ActiveSection>("prep");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [mentorVideos, setMentorVideos] = useState<Record<string, LocalMentorRecording>>({});
 
   const [cases, setCases] = useState<LessonCase[]>([]);
   const [activeCaseId, setActiveCaseId] = useState<string>("");
@@ -85,36 +80,70 @@ export default function App() {
   const [directMentorMinutesLogged, setDirectMentorMinutesLogged] = useState(160);
 
   const hydrateWorkspace = useCallback(async (authenticatedUser?: AuthUserProfile) => {
-    const res = await bansayFetch("/api/bansay/workspace");
-    if (!res.ok) {
-      let detail = "Failed to load workspace.";
-      try {
-        const errBody = (await res.json()) as { error?: string };
-        if (errBody?.error) detail = errBody.error;
-      } catch {
-        // ignore non-JSON error
+    const cacheKey = authenticatedUser
+      ? `bansay_offline_cases_v2_${authenticatedUser.id}`
+      : "";
+    try {
+      const res = await bansayFetch("/api/bansay/workspace");
+      if (!res.ok) {
+        let detail = "Failed to load workspace.";
+        try {
+          const errBody = (await res.json()) as { error?: string };
+          if (errBody?.error) detail = errBody.error;
+        } catch {
+          // ignore non-JSON error
+        }
+        throw new Error(detail);
       }
-      throw new Error(detail);
+      const data = (await res.json()) as WorkspacePayload;
+      const resolvedUser = data.user || authenticatedUser;
+      setUser(resolvedUser);
+      setCases(data.cases || []);
+      try {
+        if (resolvedUser?.id) {
+          sessionStorage.setItem("bansay_offline_profile", JSON.stringify(resolvedUser));
+          localStorage.setItem(
+            `bansay_offline_cases_v2_${resolvedUser.id}`,
+            JSON.stringify(data.cases || [])
+          );
+        }
+      } catch {
+        // ignore storage quota errors
+      }
+      setActiveCaseId((prev) =>
+        prev && data.cases.some((c) => c.id === prev)
+          ? prev
+          : data.cases[0]?.id || ""
+      );
+      setPeerLibrary(data.sharedLacLibrary || INITIAL_PEER_LIBRARY);
+      setEvidenceItems(data.evidenceItems || []);
+      setCohortSeats(data.cohortSeats || INITIAL_COHORT_SEATS);
+      setQuarters(data.quarters || INITIAL_COMPETENCY_QUARTERS);
+      setEngineeringControls(data.engineeringControls || ENGINEERING_CONTROLS_TABLE);
+      setPilotMetrics(data.pilotMetrics || PILOT_VALIDATION_METRICS_TABLE);
+      setPilotBudget(data.pilotBudget || PILOT_BUDGET_ITEMS);
+      setUnitEconomics(data.unitEconomics || UNIT_ECONOMICS_TABLE);
+      setDirectMentorMinutesLogged(data.directMentorMinutesLogged ?? 160);
+      setActiveSection(resolvedUser.role === "teacher" ? "prep" : "cohort");
+    } catch (err) {
+      if (cacheKey && authenticatedUser) {
+        try {
+          const cached = localStorage.getItem(cacheKey);
+          if (cached) {
+            const parsedCases = JSON.parse(cached) as LessonCase[];
+            setUser(authenticatedUser);
+            setCases(parsedCases);
+            setActiveCaseId(parsedCases[0]?.id || "");
+            setActiveSection(authenticatedUser.role === "teacher" ? "prep" : "cohort");
+            setToast("Loaded cached lessons for offline study.");
+            return;
+          }
+        } catch {
+          // ignore corrupt cache
+        }
+      }
+      throw err;
     }
-    const data = (await res.json()) as WorkspacePayload;
-    const resolvedUser = data.user || authenticatedUser;
-    setUser(resolvedUser);
-    setCases(data.cases || []);
-    setActiveCaseId((prev) =>
-      prev && data.cases.some((c) => c.id === prev)
-        ? prev
-        : data.cases[0]?.id || ""
-    );
-    setPeerLibrary(data.sharedLacLibrary || INITIAL_PEER_LIBRARY);
-    setEvidenceItems(data.evidenceItems || []);
-    setCohortSeats(data.cohortSeats || INITIAL_COHORT_SEATS);
-    setQuarters(data.quarters || INITIAL_COMPETENCY_QUARTERS);
-    setEngineeringControls(data.engineeringControls || ENGINEERING_CONTROLS_TABLE);
-    setPilotMetrics(data.pilotMetrics || PILOT_VALIDATION_METRICS_TABLE);
-    setPilotBudget(data.pilotBudget || PILOT_BUDGET_ITEMS);
-    setUnitEconomics(data.unitEconomics || UNIT_ECONOMICS_TABLE);
-    setDirectMentorMinutesLogged(data.directMentorMinutesLogged ?? 160);
-    setActiveSection(resolvedUser.role === "teacher" ? "prep" : "cohort");
   }, []);
 
   useEffect(() => {
@@ -127,9 +156,17 @@ export default function App() {
           await hydrateWorkspace(data.user);
         } else if (res.status === 401) {
           setAuthToken(null);
+          sessionStorage.removeItem("bansay_offline_profile");
         }
       } catch {
-        setAuthToken(null);
+        if (active) {
+          try {
+            const cached = sessionStorage.getItem("bansay_offline_profile");
+            if (cached) await hydrateWorkspace(JSON.parse(cached) as AuthUserProfile);
+          } catch {
+            // Offline rehearsal needs a workspace previously opened in this tab.
+          }
+        }
       } finally {
         if (active) setAuthChecking(false);
       }
@@ -150,15 +187,22 @@ export default function App() {
     [cases, activeCaseId]
   );
 
-  const upsertCase = (record: LessonCase) => {
+  const upsertCase = useCallback((record: LessonCase) => {
     setCases((prev) => {
       const exists = prev.some((c) => c.id === record.id);
-      if (exists) {
-        return prev.map((c) => (c.id === record.id ? record : c));
+      const next = exists
+        ? prev.map((c) => (c.id === record.id ? record : c))
+        : [record, ...prev];
+      try {
+        if (user?.id) {
+          localStorage.setItem(`bansay_offline_cases_v2_${user.id}`, JSON.stringify(next));
+        }
+      } catch {
+        // ignore storage quota errors
       }
-      return [record, ...prev];
+      return next;
     });
-  };
+  }, [user?.id]);
 
   const handleUpdatePreferences = async (
     patch: Partial<{
@@ -204,6 +248,7 @@ export default function App() {
       // Clear local session state even if logout request fails
     } finally {
       setAuthToken(null);
+          sessionStorage.removeItem("bansay_offline_profile");
       setUser(null);
       setCases([]);
       setActiveCaseId("");
@@ -232,6 +277,7 @@ export default function App() {
     baselineFirst: boolean;
     baselineExplanation: string;
     usesLabEquipment: boolean;
+    factSheet?: string;
     imageData?: { mimeType: string; data: string };
     uploadedImagePreview?: string;
     noStudentFacesConfirmed?: boolean;
@@ -295,46 +341,17 @@ export default function App() {
     }
   };
 
-  const handleRehearseTurn = async ({
-    caseId,
-    teacherMessage,
-    attachmentType,
-  }: {
-    caseId: string;
-    teacherMessage: string;
-    attachmentType: "text" | "voice-note" | "video-note" | "handwritten-photo";
-  }) => {
-    const target = cases.find((c) => c.id === caseId);
-    if (!target) throw new Error("Active lesson case not found.");
-
+  const handleRehearseTurn = useCallback(async (payload: RehearsalRequest) => {
     const res = await bansayFetch("/api/bansay/rehearse", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        caseId,
-        subject: target.subject,
-        gradeLevel: target.gradeLevel,
-        topic: target.topic,
-        language: user?.preferredLanguage || target.language,
-        studentName: target.support.simulatedStudentPrompt.studentName,
-        history: target.rehearsalMessages.map((m) => ({
-          sender: m.sender,
-          text: m.text,
-        })),
-        teacherMessage,
-        attachmentType,
-      }),
+      body: JSON.stringify(payload),
     });
     const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || "Simulated learner could not respond.");
-    }
-    if (data.caseRecord) {
-      upsertCase(data.caseRecord as LessonCase);
-    }
-    return { ended: Boolean(data.ended), demo: Boolean(data.demo) };
-  };
+    if (!res.ok) throw new Error(data.error || "Simulated learner could not respond.");
+    upsertCase(data.caseRecord as LessonCase);
+    return data.caseRecord as LessonCase;
+  }, [upsertCase]);
 
   const handleSubmitReview = async (caseId: string) => {
     const res = await bansayFetch(`/api/bansay/cases/${caseId}/submit-review`, {
@@ -522,26 +539,9 @@ export default function App() {
     );
   };
 
-  const handleStoreMentorVideo = (caseId: string, recording: LocalMentorRecording) => {
-    setMentorVideos((current) => {
-      if (current[caseId] && current[caseId].url !== recording.url) {
-        URL.revokeObjectURL(current[caseId].url);
-      }
-      return { ...current, [caseId]: recording };
-    });
-  };
-
-  const handleClearMentorVideo = (caseId: string) => {
-    setMentorVideos((current) => {
-      if (current[caseId]) URL.revokeObjectURL(current[caseId].url);
-      const { [caseId]: _, ...remaining } = current;
-      return remaining;
-    });
-  };
-
   if (authChecking) {
     return (
-      <main className="bansay-app min-h-[100dvh] flex items-center justify-center bg-[#F7F6FB] text-slate-700">
+      <main className="bansay-app min-h-[100dvh] flex items-center justify-center bg-bansay-canvas text-slate-700">
         <div className="flex items-center gap-2.5 text-sm font-medium">
           <Loader2 className="h-5 w-5 animate-spin text-violet-700" />
           <span>Loading BANSAY workspace…</span>
@@ -571,7 +571,7 @@ export default function App() {
 
   return (
     <div
-      className={`bansay-app min-h-[100dvh] flex overflow-x-clip bg-[#F7F6FB] text-slate-900 ${
+      className={`bansay-app min-h-[100dvh] flex overflow-x-clip bg-bansay-canvas text-slate-900 ${
         lowDataMode ? "low-data-mode" : ""
       }`}
     >
@@ -622,6 +622,8 @@ export default function App() {
 
             {activeSection === "rehearsal" && (
               <RehearsalReview
+                teacher={user}
+                key={activeCase?.id}
                 language={language}
                 activeCase={activeCase}
                 onRehearseTurn={handleRehearseTurn}
@@ -634,9 +636,6 @@ export default function App() {
                 }
                 peerLibrary={peerLibrary}
                 onSaveLibraryItem={handleSaveLibraryItem}
-                mentorRecording={activeCase ? mentorVideos[activeCase.id] : undefined}
-                onStoreMentorVideo={handleStoreMentorVideo}
-                onClearMentorVideo={handleClearMentorVideo}
                 isLessonReady={Boolean(activeCase)}
                 onPlanLesson={() => setActiveSection("prep")}
               />
@@ -674,7 +673,6 @@ export default function App() {
                 pilotBudget={pilotBudget}
                 unitEconomics={unitEconomics}
                 directMentorMinutesLogged={directMentorMinutesLogged}
-                mentorVideos={mentorVideos}
               />
             )}
           </div>

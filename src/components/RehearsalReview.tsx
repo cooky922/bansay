@@ -8,14 +8,13 @@ import {
   Lock,
   MessageSquare,
   Mic,
+  MoreHorizontal,
+  Paperclip,
   Search,
   Send,
   ShieldAlert,
   Sparkles,
-  Square,
   Trash2,
-  UserCheck,
-  Video,
   X,
 } from "lucide-react";
 import type {
@@ -26,18 +25,16 @@ import type {
   SubjectName,
 } from "../types/bansay";
 import { UI_COPY } from "../data/bansayData";
-import type { LocalMentorRecording } from "../App";
+import { rehearsalGradeLabel, REHEARSAL_LIMIT, type RehearsalRequest } from "../lib/rehearsal";
+import { useLearnerConversation } from "./useLearnerConversation";
 import { CustomSelect } from "./CustomSelect";
-import { Checkbox, FieldError, Tabs } from "./ui";
+import { Checkbox, FieldError } from "./ui";
 
 interface RehearsalReviewProps {
   language: BansayLanguage;
+  teacher: { id: string; displayName?: string };
   activeCase?: LessonCase;
-  onRehearseTurn: (payload: {
-    caseId: string;
-    teacherMessage: string;
-    attachmentType: "text" | "voice-note" | "video-note" | "handwritten-photo";
-  }) => Promise<{ ended?: boolean; demo?: boolean }>;
+  onRehearseTurn: (payload: RehearsalRequest) => Promise<LessonCase>;
   onSubmitReview: (caseId: string) => Promise<void>;
   onSubmitFreshCase: (
     caseId: string,
@@ -58,15 +55,13 @@ interface RehearsalReviewProps {
   onPatchOfflineFallback: (caseId: string) => Promise<void>;
   peerLibrary: PeerLibraryItem[];
   onSaveLibraryItem: (id: string) => Promise<void>;
-  mentorRecording?: LocalMentorRecording;
-  onStoreMentorVideo: (caseId: string, recording: LocalMentorRecording) => void;
-  onClearMentorVideo: (caseId: string) => void;
   isLessonReady: boolean;
   onPlanLesson: () => void;
 }
 
 export function RehearsalReview({
   language,
+  teacher,
   activeCase,
   onRehearseTurn,
   onSubmitReview,
@@ -76,25 +71,39 @@ export function RehearsalReview({
   onPatchOfflineFallback,
   peerLibrary,
   onSaveLibraryItem,
-  mentorRecording,
-  onStoreMentorVideo,
-  onClearMentorVideo,
   isLessonReady,
   onPlanLesson,
 }: RehearsalReviewProps) {
   const copy = UI_COPY[language];
   const [scenarioTab, setScenarioTab] = useState<1 | 2>(1);
   const [teacherInput, setTeacherInput] = useState("");
+  const queuedResponses = useRef<string[]>([]);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingKind, setRecordingKind] = useState<"voice" | "video">("video");
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [voiceUrl, setVoiceUrl] = useState<string | null>(null);
   const [voiceTranscript, setVoiceTranscript] = useState("");
-  const [isSending, setIsSending] = useState(false);
+  const chat = useLearnerConversation(isLessonReady ? activeCase : undefined, language, teacher, onRehearseTurn);
+  const studentName = chat.studentName ?? "Learner";
+  const initials = chat.studentName === "AK" ? "AK" : studentName[0];
+  const [mediaMenu, setMediaMenu] = useState<"attachments" | "more" | null>(null);
+  const phase2 = import.meta.env.VITE_BANSAY_PHASE_2 === "true";
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [rehearsalError, setRehearsalError] = useState<string | null>(null);
   const [submissionNotice, setSubmissionNotice] = useState<string | null>(null);
-  const [demoNotice, setDemoNotice] = useState(false);
+
+  useEffect(() => {
+    if (chat.sending || chat.needsOpening || !queuedResponses.current.length) return;
+    if (chat.closing || chat.shared) {
+      const remaining = queuedResponses.current.splice(0);
+      setTeacherInput((draft) => [...remaining, draft].filter(Boolean).join("\n"));
+      return;
+    }
+    const next = queuedResponses.current.shift();
+    if (next) void chat.send(next).then((sent) => {
+      if (!sent) setTeacherInput((draft) => [next, draft].filter(Boolean).join("\n"));
+    });
+  }, [chat.sending, chat.needsOpening, chat.closing, chat.shared, chat.send]);
 
   // Scenario 2 state
   const [revisionDraft, setRevisionDraft] = useState(activeCase?.teacherRevision || "");
@@ -123,11 +132,12 @@ export function RehearsalReview({
   const recordingTimerRef = useRef<number | null>(null);
   const videoChunksRef = useRef<Blob[]>([]);
   const recognitionRef = useRef<any>(null);
-  const transcriptRef = useRef("");
+  const recordingUrlRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
   const conversationRef = useRef<HTMLDivElement | null>(null);
 
-  const recordedVideoUrl = voiceUrl || mentorRecording?.url;
-  const recordedKind = voiceUrl ? recordingKind : mentorRecording?.kind;
+  const recordedVideoUrl = voiceUrl;
+  const recordedKind = recordingKind;
 
   useEffect(() => {
     setRevisionDraft(activeCase?.teacherRevision || "");
@@ -144,12 +154,15 @@ export function RehearsalReview({
   const clearVoiceNote = () => {
     setVoiceUrl(null);
     setVoiceTranscript("");
-    transcriptRef.current = "";
-    if (activeCase) onClearMentorVideo(activeCase.id);
+    if (recordingUrlRef.current) URL.revokeObjectURL(recordingUrlRef.current);
+    recordingUrlRef.current = null;
   };
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
+      if (recordingUrlRef.current) URL.revokeObjectURL(recordingUrlRef.current);
       clearRecordingTimer();
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
       recognitionRef.current?.stop?.();
@@ -159,9 +172,9 @@ export function RehearsalReview({
   useEffect(() => {
     const conversation = conversationRef.current;
     if (conversation) {
-      conversation.scrollTo({ top: conversation.scrollHeight, behavior: "smooth" });
+      conversation.scrollTo({ top: conversation.scrollHeight, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
     }
-  }, [activeCase?.rehearsalMessages.length, isSending]);
+  }, [scenarioTab, chat.messages.length, chat.typing, chat.closing]);
 
   if (!isLessonReady || !activeCase) {
     return (
@@ -190,7 +203,10 @@ export function RehearsalReview({
     setIsRecording(false);
   };
 
-  const startRecording = async () => {
+  const startRecording = async (kind: "voice" | "video", dictate = false) => {
+    if (mediaStreamRef.current) return;
+    setRecordingKind(kind);
+    setMediaMenu(null);
     setRehearsalError(null);
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
       setRehearsalError(
@@ -202,18 +218,22 @@ export function RehearsalReview({
     try {
       clearVoiceNote();
       const stream = await navigator.mediaDevices.getUserMedia(
-        recordingKind === "video"
+        kind === "video"
           ? { audio: true, video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } } }
           : { audio: true }
       );
+      if (!mountedRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       mediaStreamRef.current = stream;
       const preferredMimeType =
-        recordingKind === "video" && MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
+        kind === "video" && MediaRecorder.isTypeSupported("video/webm;codecs=vp8,opus")
           ? "video/webm;codecs=vp8,opus"
-          : recordingKind === "video"
+          : kind === "video"
           ? "video/webm"
           : "audio/webm;codecs=opus";
-      const recorder = new MediaRecorder(stream, { mimeType: preferredMimeType });
+      const recorder = new MediaRecorder(stream, MediaRecorder.isTypeSupported(preferredMimeType) ? { mimeType: preferredMimeType } : undefined);
       videoChunksRef.current = [];
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) videoChunksRef.current.push(event.data);
@@ -222,12 +242,12 @@ export function RehearsalReview({
         const clip = new Blob(videoChunksRef.current, {
           type:
             recorder.mimeType ||
-            (recordingKind === "video" ? "video/webm" : "audio/webm"),
+            (kind === "video" ? "video/webm" : "audio/webm"),
         });
-        if (clip.size > 0) {
+        if (clip.size > 0 && mountedRef.current) {
           const nextUrl = URL.createObjectURL(clip);
           setVoiceUrl(nextUrl);
-          onStoreMentorVideo(activeCase.id, { url: nextUrl, kind: recordingKind });
+          recordingUrlRef.current = nextUrl;
         }
         stream.getTracks().forEach((track) => track.stop());
         mediaStreamRef.current = null;
@@ -235,17 +255,16 @@ export function RehearsalReview({
 
       const SpeechRecognition =
         (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
+      if (dictate && navigator.onLine && SpeechRecognition) {
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
-        recognition.lang = language === "fil" ? "fil-PH" : "en-PH";
+        recognition.lang = language === "fil" ? "fil-PH" : language === "ceb" ? "ceb-PH" : "en-PH";
         recognition.onresult = (event: any) => {
           let transcript = "";
           for (let index = 0; index < event.results.length; index += 1) {
             transcript += event.results[index][0].transcript;
           }
-          transcriptRef.current = transcript.trim();
           setVoiceTranscript(transcript.trim());
           setTeacherInput(transcript.trim());
         };
@@ -262,49 +281,25 @@ export function RehearsalReview({
         1000
       );
     } catch {
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
       setRehearsalError(
         "Camera or microphone access was not granted. Check browser permission or type your explanation."
       );
     }
   };
 
-  const handleSendToStudent = async (e: FormEvent) => {
-    e.preventDefault();
-    if (!teacherInput.trim() || isSending) return;
+  const handleSendToStudent = async (event: FormEvent) => {
+    event.preventDefault();
+    const message = teacherInput.trim();
+    if (!message) return;
     if (isRecording) stopRecording();
-
-    setRehearsalError(null);
-    const messageText = teacherInput.trim();
-    const attachmentType = recordedVideoUrl
-      ? recordedKind === "video"
-        ? "video-note"
-        : "voice-note"
-      : "text";
-
     setTeacherInput("");
-    setIsSending(true);
-    try {
-      const result = await onRehearseTurn({
-        caseId: activeCase.id,
-        teacherMessage: messageText,
-        attachmentType,
-      });
-      setDemoNotice(Boolean(result.demo));
-      if (result.ended) {
-        setSubmissionNotice(
-          "This rehearsal reached its 5-follow-up limit. Submit your transcript to your mentor or revise your response."
-        );
-      }
-    } catch (err) {
-      setTeacherInput(messageText);
-      setRehearsalError(
-        err instanceof Error
-          ? err.message
-          : "Unable to reach simulated learner right now."
-      );
-    } finally {
-      setIsSending(false);
+    if (chat.sending || chat.needsOpening) {
+      queuedResponses.current.push(message);
+      return;
     }
+    if (!(await chat.send(message))) setTeacherInput((draft) => draft || message);
   };
 
   const handleSubmitForMentorReview = async () => {
@@ -350,6 +345,7 @@ export function RehearsalReview({
   };
 
   const openMediaConsentModal = (tier: "voice-note" | "cot-video") => {
+    setMediaMenu(null);
     setConsentModalTier(tier);
     setConsentChecked(false);
     setNoStudentFacesChecked(tier === "voice-note");
@@ -399,11 +395,11 @@ export function RehearsalReview({
   const handleDownloadOfflinePrompt = async () => {
     const promptTxt = [
       `BANSAY OFFLINE REHEARSAL PROMPT`,
-      `Topic: ${activeCase.topic} (${activeCase.subject} · ${activeCase.gradeLevel})`,
+      `Topic: ${activeCase.topic} (${activeCase.subject} · ${gradeLabel})`,
       `Class Date: ${activeCase.classDate}`,
       `Assigned Mentor: ${activeCase.mentorReview.mentorName}`,
       ``,
-      `Simulated Learner (${activeCase.support.simulatedStudentPrompt.studentName}) asks:`,
+      `Simulated Learner (${studentName}) asks:`,
       activeCase.support.simulatedStudentPrompt.openingQuestion,
       ``,
       `Write your 3-5 sentence classroom explanation or record a short voice note, then submit once connected.`,
@@ -437,9 +433,9 @@ export function RehearsalReview({
     month: "short",
   });
 
-  const hasCompletedOpeningExchange = activeCase.rehearsalMessages.length >= 3;
+  const gradeLabel = rehearsalGradeLabel(activeCase.gradeLevel);
   const freshCaseUnlocked = activeCase.freshCaseStatus !== "locked";
-  const activeMediaAssets = activeCase.mediaAssets.filter((m) => m.status !== "purged");
+  const activeMediaAssets = activeCase.mediaAssets.filter((m) => m.status !== "purged" && (phase2 || m.tier !== "cot-video"));
 
   return (
     <div className="space-y-6">
@@ -478,33 +474,15 @@ export function RehearsalReview({
         </div>
       )}
 
-      {demoNotice && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-          Demo mode · Local simulated learner response active until an OpenRouter API key is configured.
-        </div>
-      )}
-
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left: Rehearsal & Fresh Case (8 cols) */}
-        <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 space-y-5">
+        <div className="min-w-0 lg:col-span-8 bg-white border border-slate-200 rounded-2xl p-3 sm:p-5 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
-            <div className="w-full sm:w-auto sm:min-w-[24rem]">
-              <Tabs
-                value={scenarioTab}
-                onChange={setScenarioTab}
-                label="Rehearsal scenarios"
-                items={[
-                  { value: 1, label: "1 · Practice with a student" },
-                  {
-                    value: 2,
-                    label: freshCaseUnlocked
-                      ? "2 · Try a new example"
-                      : "2 · Unlocks after mentor note",
-                    disabled: !freshCaseUnlocked,
-                  },
-                ]}
-              />
-            </div>
+            {scenarioTab === 2 && (
+              <button type="button" onClick={() => setScenarioTab(1)} className="text-xs font-semibold text-bansay-strong hover:underline">
+                Back to conversation
+              </button>
+            )}
 
             <button
               type="button"
@@ -517,149 +495,89 @@ export function RehearsalReview({
           </div>
 
           {scenarioTab === 1 ? (
-            <div className="space-y-4">
-              <div>
-                <p className="text-xs text-slate-500 mb-0.5">
-                  {activeCase.subject} · {activeCase.gradeLevel} · {activeCase.topic}
-                </p>
-                <h2 className="font-display text-lg font-bold text-slate-900">
-                  Simulated learner exchange
-                </h2>
-              </div>
+            <section aria-label="Simulated learner exchange" className="flex h-[min(44rem,80dvh)] min-h-[26rem] flex-col rounded-2xl border border-bansay-line bg-white">
+              <header className="relative z-10 flex shrink-0 items-start gap-2.5 rounded-t-2xl border-b border-bansay-line bg-white px-3 py-3 sm:items-center sm:px-4">
+                <span aria-hidden="true" className="grid size-10 shrink-0 place-items-center rounded-full bg-bansay-deep font-bold text-white">{initials}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    <span className="font-bold text-bansay-deep">{studentName} &middot; Simulated {gradeLabel} learner</span>
+                    <span className="rounded-full bg-bansay-tint px-2 py-0.5 text-xs font-semibold text-bansay-strong">AI student</span>
+                  </div>
+                  <p className="text-xs text-slate-600 wrap-anywhere">{activeCase.topic}</p>
+                  <p className="text-xs font-semibold text-bansay-strong">Turn {Math.min((chat.closing || chat.shared) ? chat.turns : chat.turns + 1, REHEARSAL_LIMIT)} of {REHEARSAL_LIMIT}</p>
+                </div>
+                <div className="relative">
+                  <button type="button" className="icon-button" aria-label="Conversation options" aria-expanded={mediaMenu === "more"} onClick={() => setMediaMenu(mediaMenu === "more" ? null : "more")}>
+                    <MoreHorizontal size={22} />
+                  </button>
+                  {mediaMenu === "more" && (
+                    <div className="absolute right-0 top-full z-20 w-64 rounded-xl border border-bansay-line bg-white p-2 shadow-lg">
+                      <button type="button" disabled={isRecording} onClick={() => void startRecording("video")} className="ui-button ui-button-quiet w-full justify-start text-left">
+                        Self-review camera: stays on your device
+                      </button>
+                      <button type="button" className="ui-button ui-button-quiet w-full justify-start" onClick={() => setMediaMenu("attachments")}>Attachments</button>
+                    </div>
+                  )}
+                </div>
+              </header>
 
-              <div
-                ref={conversationRef}
-                className="space-y-3 max-h-[380px] overflow-y-auto pr-1"
-              >
-                {activeCase.rehearsalMessages.map((msg) => {
-                  const isStudent = msg.sender === "student";
+              {chat.offline && <p role="status" className="shrink-0 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">Offline. {studentName} uses scripted questions from your pack. Messages sync when you reconnect.</p>}
+              <div ref={conversationRef} role="log" aria-label="Conversation" className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-bansay-canvas p-3 sm:p-4">
+                {chat.messages.map((message, index) => {
+                  const learner = message.sender === "student";
+                  const previous = chat.messages[index - 1];
                   return (
-                    <div
-                      key={msg.id}
-                      className={`rounded-xl p-4 border ${
-                        isStudent
-                          ? "bg-slate-50 border-slate-200"
-                          : "bg-violet-50/70 border-violet-200 ml-4 sm:ml-8"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2 text-xs text-slate-500 mb-1.5">
-                        <span className="font-semibold text-slate-800">
-                          {isStudent
-                            ? `${activeCase.support.simulatedStudentPrompt.studentName} · Simulated ${activeCase.gradeLevel} learner`
-                            : "Your classroom explanation"}
-                          {msg.attachmentType === "video-note" &&
-                            " · Local webcam self-review"}
-                          {msg.attachmentType === "voice-note" && " · Voice transcript"}
-                        </span>
-                        <span className="tabular-nums">{msg.timestamp}</span>
+                    <div key={message.id}>
+                      {previous?.timestamp !== message.timestamp && (
+                        <p className="my-2 text-center text-xs text-slate-600 tabular-nums">{message.timestamp}</p>
+                      )}
+                      <div className={learner ? "flex items-end gap-2" : "flex justify-end"}>
+                        {learner && <span aria-hidden="true" className="grid size-7 shrink-0 place-items-center rounded-full bg-bansay-deep text-xs font-bold text-white">{initials}</span>}
+                        <div className={`min-w-0 max-w-[85%] ${learner ? "" : "text-right"}`}>
+                          {learner && <p className="mb-0.5 pl-2 text-xs font-semibold text-bansay-deep">{studentName}</p>}
+                          <div className={`inline-block rounded-2xl px-3 py-2 text-left text-sm leading-relaxed ${learner ? "rounded-bl-sm border border-bansay-line bg-white text-slate-900" : "rounded-br-sm bg-bansay-action text-white"}`}>
+                            <p className="whitespace-pre-wrap wrap-anywhere">{message.text}</p>
+                            {message.scripted && <p className="mt-1 text-xs font-semibold text-bansay-strong">Scripted</p>}
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-sm text-slate-800 leading-relaxed">{msg.text}</p>
                     </div>
                   );
                 })}
-
-                {isSending && (
-                  <div className="rounded-xl p-4 border border-slate-200 bg-slate-50 flex items-center gap-2 text-xs text-slate-600">
-                    <Loader2 className="w-4 h-4 animate-spin text-violet-700" />
-                    <span>
-                      {activeCase.support.simulatedStudentPrompt.studentName} is thinking about your explanation...
-                    </span>
+                {chat.typing && (
+                  <p role="status" className="ml-9 inline-flex items-center gap-2 rounded-2xl border border-bansay-line bg-white px-3 py-2 text-xs text-slate-700">
+                    <span aria-hidden="true" className="size-2 rounded-full bg-bansay-action motion-safe:animate-pulse" />
+                    {studentName} is typing...
+                  </p>
+                )}
+                {(chat.closing || chat.shared) && !chat.sending && (
+                  <div className="rounded-xl border border-bansay-line bg-white p-3">
+                    <p className="font-bold text-bansay-deep">{chat.shared ? "Sent to mentor" : "Rehearsal complete"}</p>
+                    <p className="mt-1 text-sm text-slate-700">{chat.closing === "understood" ? `${studentName} restated the idea in their own words.` : chat.closing === "turn-limit" ? "You reached five turns." : "Your mentor can now review this conversation."}</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {!chat.shared && <button type="button" className="ui-button ui-button-primary" disabled={isSubmittingReview || chat.offline || chat.pending} onClick={() => void handleSubmitForMentorReview()}>Send to mentor</button>}
+                      <button type="button" className="ui-button ui-button-secondary" onClick={() => void chat.send(undefined, true)}>Keep practicing</button>
+                    </div>
                   </div>
                 )}
               </div>
 
-              {rehearsalError && (
-                <div
-                  role="alert"
-                  className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-xs text-rose-800"
-                >
-                  {rehearsalError}
-                </div>
-              )}
-
-              {/* Teacher Response + 4-Tier Media Capture Controls */}
-              <form onSubmit={handleSendToStudent} className="space-y-3 pt-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <label
-                    htmlFor="rehearsal-input"
-                    className="text-xs font-semibold text-slate-700"
-                  >
-                    Your response (
-                    {language === "en"
-                      ? "English"
-                      : language === "fil"
-                      ? "Filipino"
-                      : "Cebuano"}
-                    )
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div
-                      className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1"
-                      role="group"
-                      aria-label="Recording format"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setRecordingKind("voice")}
-                        disabled={isRecording}
-                        className={`rounded-md px-2 py-1 text-[11px] font-medium ${
-                          recordingKind === "voice"
-                            ? "bg-white text-violet-900 shadow-sm"
-                            : "text-slate-600"
-                        }`}
-                      >
-                        Voice note
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setRecordingKind("video")}
-                        disabled={isRecording}
-                        className={`rounded-md px-2 py-1 text-[11px] font-medium ${
-                          recordingKind === "video"
-                            ? "bg-white text-violet-900 shadow-sm"
-                            : "text-slate-600"
-                        }`}
-                      >
-                        Camera practice (device only)
-                      </button>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={isRecording ? stopRecording : startRecording}
-                      className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors ${
-                        isRecording
-                          ? "bg-rose-50 border-rose-300 text-rose-800"
-                          : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      {isRecording ? (
-                        <Square className="w-3.5 h-3.5 fill-current" />
-                      ) : recordingKind === "video" ? (
-                        <Video className="w-3.5 h-3.5" />
-                      ) : (
-                        <Mic className="w-3.5 h-3.5" />
-                      )}
-                      <span>
-                        {isRecording
-                          ? `Stop · ${recordingSeconds}s`
-                          : recordingKind === "video"
-                          ? "Self-review webcam"
-                          : "Record voice"}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-
+              <div className="relative z-10 shrink-0 rounded-b-2xl border-t border-bansay-line bg-white p-2 sm:p-3">
+                {(rehearsalError || chat.error) && <p role="alert" className="mb-2 text-xs text-rose-800">{rehearsalError || chat.error} {chat.pending && !chat.offline && <button type="button" className="font-semibold underline" onClick={chat.retrySync}>Retry sync</button>}</p>}
+                {(chat.offline || chat.pending) && chat.turns > 0 && <p className="mb-2 text-xs text-slate-600">Mentor submission is available after the conversation syncs.</p>}
+                {(isRecording || recordedVideoUrl) && <details open={isRecording || undefined} className="mb-2 max-h-40 overflow-auto">
+                  <summary className="text-xs font-semibold text-bansay-strong">{isRecording ? "Recording controls" : "Review local recording"}</summary>
                 {(isRecording || recordedVideoUrl) && (
                   <div className="rounded-xl border border-violet-200 bg-violet-50/60 p-3.5 space-y-2.5">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-xs font-semibold text-violet-950">
                         {isRecording
-                          ? `Recording ${recordedKind === "video" ? "camera clip" : "voice note"}…`
+                          ? `Recording ${recordingKind === "video" ? "camera clip" : "voice note"}…`
                           : recordedKind === "video"
                           ? "Camera clip ready (stays only on this device)"
                           : "Voice note ready for self-review"}
                       </p>
+                      {isRecording && <button type="button" onClick={stopRecording} className="ui-button ui-button-secondary">Stop ({recordingSeconds}s)</button>}
                       {recordedVideoUrl && !isRecording && (
                         <button
                           type="button"
@@ -685,7 +603,7 @@ export function RehearsalReview({
                     <p className="text-xs text-slate-600 leading-relaxed">
                       {recordedKind === "video"
                         ? "Camera clips stay on this device only and are cleared when you close the tab."
-                        : "Use the optional voice note button below if you want to share audio with your mentor."}
+                        : "This recording stays on this device."}
                     </p>
                     {voiceTranscript && (
                       <p className="rounded-lg bg-white/80 px-3 py-2 text-xs text-slate-700">
@@ -695,82 +613,34 @@ export function RehearsalReview({
                   </div>
                 )}
 
-                <textarea
-                  id="rehearsal-input"
-                  rows={3}
-                  value={teacherInput}
-                  onChange={(e) => setTeacherInput(e.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && !event.shiftKey) {
-                      event.preventDefault();
-                      void handleSendToStudent(event as unknown as FormEvent);
-                    }
-                  }}
-                  placeholder="Type or dictate the explanation you would give in class..."
-                  className="w-full text-sm bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900"
-                />
 
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="submit"
-                      disabled={isSending || !teacherInput.trim()}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-violet-300 bg-violet-50 hover:bg-violet-100 disabled:opacity-50 text-violet-900 text-xs font-semibold whitespace-nowrap"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Send to simulated student</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => void handleSubmitForMentorReview()}
-                      disabled={!hasCompletedOpeningExchange || isSubmittingReview}
-                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-violet-700 hover:bg-violet-800 disabled:opacity-50 text-white text-xs font-semibold whitespace-nowrap"
-                    >
-                      <UserCheck className="w-3.5 h-3.5" />
-                      <span>
-                        {isSubmittingReview
-                          ? "Submitting…"
-                          : hasCompletedOpeningExchange
-                          ? copy.submitMentorBtn
-                          : "Complete 1+ exchange first"}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              </form>
-
-              {/* 4-Tier Opt-In Media & Retention Controls */}
-              <div className="mt-4 pt-4 border-t border-slate-200 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-xs font-semibold text-slate-800">
-                      Optional audio or video for your mentor
-                    </p>
-                    <p className="text-[11px] text-slate-500">
-                      Only shared if you agree below, auto-deleted on schedule, and never included in portfolio exports.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => openMediaConsentModal("voice-note")}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-medium text-slate-700 whitespace-nowrap"
-                    >
-                      <Mic className="w-3.5 h-3.5 text-violet-700" />
-                      <span>Voice note (14 days)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openMediaConsentModal("cot-video")}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-violet-200 bg-violet-50/70 hover:bg-violet-100 text-xs font-semibold text-violet-900 whitespace-nowrap"
-                    >
-                      <Video className="w-3.5 h-3.5 text-violet-700" />
-                      <span>Classroom clip (7 days)</span>
-                    </button>
-                  </div>
-                </div>
-
+                </details>}
+                {!chat.closing && !chat.shared && (
+                  <form onSubmit={handleSendToStudent} className="flex items-end gap-1.5">
+                    <button type="button" className="icon-button min-h-11 min-w-9" aria-label="Attachments" aria-expanded={mediaMenu === "attachments"} onClick={() => setMediaMenu(mediaMenu === "attachments" ? null : "attachments")}><Paperclip size={20} /></button>
+                    <textarea aria-label="Your response" rows={1} maxLength={2000} value={teacherInput}
+                      onChange={(event) => setTeacherInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                          event.preventDefault();
+                          event.currentTarget.form?.requestSubmit();
+                        }
+                      }}
+                      placeholder="Write a message..."
+                      className="max-h-28 min-h-11 min-w-0 flex-1 resize-none rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 [field-sizing:content]" />
+                    <button type="button" className="icon-button min-h-11 min-w-9" aria-label={isRecording ? "Stop recording" : "Dictate a message"} onClick={isRecording ? stopRecording : () => void startRecording("voice", true)}><Mic size={20} /></button>
+                    <button type="submit" aria-label="Send message" disabled={!teacherInput.trim()} className="grid size-11 shrink-0 place-items-center rounded-full bg-bansay-action text-white hover:bg-bansay-strong disabled:opacity-50"><Send size={18} /></button>
+                  </form>
+                )}
+                {mediaMenu === "attachments" && (
+                  <div className="absolute bottom-full left-2 right-2 z-20 max-h-64 space-y-2 overflow-y-auto rounded-xl border border-bansay-line bg-white p-3 shadow-lg sm:right-auto sm:w-80">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-xs leading-relaxed text-slate-700">Mentor attachments require consent. Voice notes expire after 14 days{phase2 ? " and classroom clips after 7 days" : ""}. Both stay out of portfolio exports.</p>
+                      <button type="button" className="icon-button" aria-label="Close attachments" onClick={() => setMediaMenu(null)}><X size={16} /></button>
+                    </div>
+                    <button type="button" className="ui-button ui-button-secondary" disabled={chat.offline} onClick={() => openMediaConsentModal("voice-note")}>Voice note consent</button>
+                    <button type="button" className="ui-button ui-button-secondary" disabled={isRecording} onClick={() => void startRecording("voice")}>Record a local voice note</button>
+                    {phase2 && <button type="button" className="ui-button ui-button-secondary" disabled={chat.offline} onClick={() => openMediaConsentModal("cot-video")}>Classroom clip consent</button>}
                 {activeMediaAssets.length > 0 && (
                   <div className="space-y-2">
                     {activeMediaAssets.map((asset) => (
@@ -802,8 +672,17 @@ export function RehearsalReview({
                     ))}
                   </div>
                 )}
+
+                  </div>
+                )}
+                {chat.turns > 0 && !chat.closing && !chat.shared && !chat.sending && (
+                  <button type="button" className="ui-button ui-button-secondary mt-2" disabled={isSubmittingReview || chat.offline || chat.pending} onClick={() => void handleSubmitForMentorReview()}>
+                    {isSubmittingReview ? "Sending..." : "Finish and send to mentor"}
+                  </button>
+                )}
               </div>
-            </div>
+            </section>
+
           ) : (
             /* Scenario 2: Revision & Independent Fresh Case (Step 6) */
             <form onSubmit={handleSubmitFreshCase} className="space-y-5">
@@ -897,7 +776,7 @@ export function RehearsalReview({
 
         {/* Right Rail: Review SLA, Mentor & Coaching Note (4 cols) */}
         <div className="lg:col-span-4 space-y-5">
-          <div className="rounded-2xl bg-[#31175B] text-white p-5 space-y-4">
+          <div className="rounded-2xl bg-bansay-deep text-white p-5 space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs text-purple-200/80 font-medium">Class date &amp; review timeline</p>
@@ -989,13 +868,13 @@ export function RehearsalReview({
                   </p>
                 </div>
 
-                <button
+                {freshCaseUnlocked && <button
                   type="button"
                   onClick={() => setScenarioTab(2)}
-                  className="w-full py-2 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition-colors"
+                  className="w-full py-2 px-3 rounded-xl bg-bansay-action hover:bg-bansay-strong text-white text-xs font-semibold transition-colors"
                 >
-                  Apply feedback on Scenario 2
-                </button>
+                  Apply feedback on a new example
+                </button>}
               </div>
             ) : (
               <div className="space-y-2.5 text-xs text-slate-600 leading-relaxed">

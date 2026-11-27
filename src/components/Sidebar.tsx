@@ -128,7 +128,7 @@ export function Sidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(16rem,calc(100vw-2.5rem))] flex-col justify-between overflow-y-auto bg-[#31175B] text-left text-white transition-transform duration-200 lg:sticky lg:top-0 lg:h-[100dvh] lg:w-64 lg:translate-x-0 lg:overflow-y-auto shrink-0 ${
+        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(16rem,calc(100vw-2.5rem))] flex-col justify-between overflow-y-auto bg-bansay-deep text-left text-white transition-transform duration-200 lg:sticky lg:top-0 lg:h-[100dvh] lg:w-64 lg:translate-x-0 lg:overflow-y-auto shrink-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
         aria-label="Primary navigation"
@@ -198,7 +198,7 @@ export function Sidebar({
                       <span
                         className={`rounded px-1.5 py-0.5 font-mono text-xs tabular-nums ${
                           isActive
-                            ? "bg-purple-100 text-[#4C1D95]"
+                            ? "bg-purple-100 text-bansay-strong"
                             : "bg-white/15 text-purple-100"
                         }`}
                       >
@@ -247,7 +247,7 @@ export function Sidebar({
 
           <div className="rounded-xl border border-white/10 bg-white/5 p-3">
             <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-purple-300 text-xs font-bold text-[#31175B]">
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-purple-300 text-xs font-bold text-bansay-deep">
                 {teacherName
                   .split(/\s+/)
                   .filter(Boolean)

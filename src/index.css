@@ -1,6 +1,12 @@
 @import "tailwindcss";
 
-@theme {
+@theme inline {
+  --color-bansay-action: var(--bansay-brand);
+  --color-bansay-strong: var(--bansay-brand-strong);
+  --color-bansay-tint: var(--bansay-tint);
+  --color-bansay-line: var(--bansay-line);
+  --color-bansay-deep: var(--bansay-deep);
+  --color-bansay-canvas: var(--bansay-canvas);
   --font-display: "Inter", system-ui, sans-serif;
   --font-sans: "Inter", system-ui, sans-serif;
   --font-mono: "Inter", system-ui, sans-serif;
@@ -9,6 +15,9 @@
 :root {
   --bansay-brand: #6d28d9;
   --bansay-brand-strong: #4c1d95;
+  --bansay-tint: #f5f3ff;
+  --bansay-line: #ddd6fe;
+  --bansay-deep: #31175b;
   --bansay-surface: #ffffff;
   --bansay-canvas: #f7f6fb;
   --bansay-text: #0f172a;
@@ -31,7 +40,7 @@
   html {
     font-family: var(--font-sans);
     color: #18181b;
-    background-color: #f7f6fb;
+    background-color: var(--bansay-canvas);
     -webkit-font-smoothing: antialiased;
     font-size: 14px;
   }
@@ -151,7 +160,7 @@ input[type="checkbox"] { height: 1.125rem; width: 1.125rem; accent-color: var(--
 .custom-select-trigger:hover:not(:disabled) { border-color: #a78bfa; }
 .custom-select-trigger:focus-visible { border-color: #7c3aed; box-shadow: 0 0 0 2px #ede9fe; outline: none; }
 .custom-select-trigger:disabled { opacity: 0.55; }
-.custom-select-trigger-dark { border-color: rgb(255 255 255 / 0.15); background: #31175B; color: white; }
+.custom-select-trigger-dark { border-color: rgb(255 255 255 / 0.15); background: var(--bansay-deep); color: white; }
 .custom-select-trigger-dark:hover:not(:disabled) { border-color: rgb(255 255 255 / 0.35); }
 
 .custom-select-menu {
@@ -166,7 +175,7 @@ input[type="checkbox"] { height: 1.125rem; width: 1.125rem; accent-color: var(--
 
 .custom-select-menu-top { transform: translateY(-100%); }
 
-.custom-select-menu-dark { border-color: rgb(255 255 255 / 0.15); background: #31175B; }
+.custom-select-menu-dark { border-color: rgb(255 255 255 / 0.15); background: var(--bansay-deep); }
 .custom-select-menu-dark .border-slate-100 { border-color: rgb(255 255 255 / 0.12); }
 .custom-select-menu-dark .bg-slate-50 { background: rgb(255 255 255 / 0.1); }
 .custom-select-menu-dark .border-slate-200 { border-color: rgb(255 255 255 / 0.18); }
@@ -199,7 +208,7 @@ input[type="checkbox"] { height: 1.125rem; width: 1.125rem; accent-color: var(--
   background:
     radial-gradient(ellipse at 12% 12%, rgb(139 92 246 / 0.28), transparent 38%),
     radial-gradient(ellipse at 88% 88%, rgb(91 33 182 / 0.38), transparent 42%),
-    linear-gradient(135deg, #17102f 0%, #31175b 52%, #4c1d95 100%);
+    linear-gradient(135deg, #17102f 0%, var(--bansay-deep) 52%, var(--bansay-brand-strong) 100%);
 }
 
 .auth-layout { gap: 0; }

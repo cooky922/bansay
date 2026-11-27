@@ -1,14 +1,15 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   AlertTriangle,
   ArrowRight,
-  BookmarkCheck,
+  ArrowLeft,
   CheckCircle2,
-  Download,
-  FlaskConical,
-  Lightbulb,
+  ChevronDown,
+  ChevronUp,
+  FileText,
   Loader2,
   Lock,
+  MoreHorizontal,
   ShieldCheck,
   Sparkles,
 } from "lucide-react";
@@ -28,9 +29,10 @@ import {
   UI_COPY,
 } from "../data/bansayData";
 import { CustomSelect } from "./CustomSelect";
+import { OfflinePackCard } from "./OfflinePackCard";
 import { ConceptPackSteps } from "./ConceptPackSteps";
 import { DatePicker } from "./DatePicker";
-import { Checkbox, FieldError, Tabs } from "./ui";
+import { Checkbox, FieldError } from "./ui";
 import { bansayFetch } from "../lib/apiClient";
 import { requestConceptPack } from "../lib/conceptPackRequest";
 
@@ -52,6 +54,7 @@ interface LessonPrepStudioProps {
     baselineFirst: boolean;
     baselineExplanation: string;
     usesLabEquipment: boolean;
+    factSheet?: string;
   }) => Promise<{ demo?: boolean }>;
   onPatchCase: (
     caseId: string,
@@ -65,14 +68,6 @@ interface LessonPrepStudioProps {
   onGoToRehearsal: () => void;
   onNotify: (message: string) => void;
 }
-
-type SupportTab =
-  | "bridge"
-  | "examples"
-  | "diagnostic"
-  | "selfcheck"
-  | "activity"
-  | "judge";
 
 function computeDaysUntil(dateStr: string): number {
   if (!dateStr) return 5;
@@ -91,14 +86,89 @@ function isCurrentConceptPack(value: unknown): value is ValidatedConceptPack {
   if (!value || typeof value !== "object") return false;
   const pack = value as Partial<ValidatedConceptPack>;
   return Boolean(
-    pack.grounding && Array.isArray(pack.grounding.sources) &&
-    pack.formula && Array.isArray(pack.formula.variables) &&
-    pack.worked_example && typeof pack.worked_example.problem === "string" &&
-    Array.isArray(pack.worked_example.steps) && typeof pack.worked_example.answer === "string" &&
-    pack.contrast && typeof pack.contrast.wrong_result === "string" &&
-    Array.isArray(pack.misconceptions) && Array.isArray(pack.self_check) &&
-    pack.demo && Array.isArray(pack.demo.materials) && Array.isArray(pack.demo.steps)
+    pack.understand &&
+      Array.isArray(pack.understand.big_idea_lines) &&
+      pack.understand.diagram &&
+      Array.isArray(pack.understand.key_terms) &&
+      pack.model &&
+      Array.isArray(pack.model.steps) &&
+      pack.model.formula &&
+      pack.connect &&
+      Array.isArray(pack.connect.mappings) &&
+      pack.worked_example &&
+      Array.isArray(pack.worked_example.steps) &&
+      pack.worked_example.common_error &&
+      pack.misconceptions &&
+      Array.isArray(pack.misconceptions.items) &&
+      pack.self_check &&
+      Array.isArray(pack.self_check.questions) &&
+      pack.teach_it &&
+      Array.isArray(pack.teach_it.say_in_class_lines) &&
+      pack.teach_it.activity
   );
+}
+
+function offlinePackText(activeCase: LessonCase, pack: ValidatedConceptPack) {
+  return [
+    `BANSAY 10-MINUTE CONCEPT PACK`,
+    `==========================================`,
+    `Status: ${activeCase.packStatus === "mentor-verified" ? "Mentor verified" : "Unverified AI draft"}`,
+    `Topic: ${activeCase.topic} (${activeCase.subject} · ${activeCase.gradeLevel})`,
+    ...(pack.curriculum?.references?.length
+    ? [`Curriculum: ${pack.curriculum.framework} (${pack.curriculum.competencyCode}) — ${pack.curriculum.competency}`]
+    : []),
+    ``,
+    `1. UNDERSTAND`,
+    ...pack.understand.big_idea_lines,
+    `Diagram (${pack.understand.diagram.template}): ${pack.understand.diagram.title} — ${pack.understand.diagram.caption}`,
+    ...pack.understand.diagram.items.map((item) => `- ${item.label}: ${item.detail}`),
+    `Key terms:`,
+    ...pack.understand.key_terms.map((k) => `- ${k.term}: ${k.definition}`),
+    ``,
+    `2. MODEL`,
+    ...pack.model.steps.map((s, i) => `${i + 1}. ${s}`),
+    `When it applies: ${pack.model.when_it_applies}`,
+    `When it doesn't apply: ${pack.model.when_it_does_not_apply}`,
+    `Formula: ${pack.model.formula.law} (${pack.model.formula.equation})`,
+    ``,
+    `3. CONNECT (Your ${pack.connect.short_field_label} background)`,
+    ...pack.connect.mappings.map((m) => `- ${m.field_feature} -> ${m.lesson_concept}: ${m.explanation}`),
+    `Where the comparison stops: ${pack.connect.where_comparison_stops}`,
+    ``,
+    `4. WORKED EXAMPLE`,
+    `Problem: ${pack.worked_example.problem}`,
+    ...pack.worked_example.steps.map((s, i) => `${i + 1}. ${s}`),
+    `Final answer: ${pack.worked_example.answer}`,
+    `Common error (${pack.worked_example.common_error.error_name}): ${pack.worked_example.common_error.wrong_work} -> ${pack.worked_example.common_error.wrong_result}. ${pack.worked_example.common_error.why_wrong}`,
+    ``,
+    `5. MISCONCEPTIONS`,
+    `Predict first: ${pack.misconceptions.prediction_prompt}`,
+    ...pack.misconceptions.items.flatMap((m) => [
+    `- ${m.name}`,
+    `  What students say: ${m.what_students_say}`,
+    `  What is really happening: ${m.what_is_really_happening}`,
+    `  Teaching move: ${m.teaching_move}`,
+  ]),
+    ``,
+    `6. SELF-CHECK`,
+    ...pack.self_check.questions.flatMap((q, qi) => [
+    `Q${qi + 1}: ${q.question}`,
+    ...q.options.map((o) => `  [${o.correct ? "Correct" : "Incorrect"}] ${o.text} — ${o.explanation}`),
+  ]),
+    ``,
+    `7. TEACH IT`,
+    `Say this in class:`,
+    ...pack.teach_it.say_in_class_lines.map((l) => `- ${l}`),
+    `Activity: ${pack.teach_it.activity.title} (${pack.teach_it.activity.time_needed})`,
+    `Prepare before class: ${pack.teach_it.activity.prepare_before_class}`,
+    `Materials: ${pack.teach_it.activity.materials.map((m) => `${m.amount} ${m.name}`).join(", ")}`,
+    `Predict: ${pack.teach_it.activity.predict_prompt}`,
+    ...pack.teach_it.activity.steps.map((s) => `${s.number}. ${s.instruction}`),
+    `Observe: ${pack.teach_it.activity.observe_prompt}`,
+    `Explain: ${pack.teach_it.activity.explain_prompt}`,
+    `Scale note: ${pack.teach_it.activity.scale_note}`,
+    `Safety: ${pack.teach_it.activity.safety_note}`,
+  ].join("\n");
 }
 
 export function LessonPrepStudio({
@@ -114,9 +184,20 @@ export function LessonPrepStudio({
 }: LessonPrepStudioProps) {
   const copy = UI_COPY[language];
   const [step, setStep] = useState<1 | 2>(activeCase ? 2 : 1);
-  const [supportTab, setSupportTab] = useState<SupportTab>("bridge");
+  const [showPackMenu, setShowPackMenu] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const confirmNewLesson = useRef<HTMLDialogElement>(null);
+  const setupHeading = useRef<HTMLHeadingElement>(null);
+  const currentPack = activeCase?.support.validatedPack;
+  const hasSteps = isCurrentConceptPack(currentPack);
 
-  // Step 2 Intake state (starts blank by default)
+  function openLessonPrep() {
+    setShowPackMenu(false);
+    setStep(1);
+    window.requestAnimationFrame(() => setupHeading.current?.focus());
+  }
+
+  // Lesson Setup state (starts blank by default)
   const [subject, setSubject] = useState<SubjectName>("Science");
   const [gradeLevel, setGradeLevel] = useState("Grade 7");
   const [topic, setTopic] = useState("");
@@ -124,30 +205,18 @@ export function LessonPrepStudio({
   const [customTopic, setCustomTopic] = useState("");
   const teacherMajorInfo = (user.major || user.degree || "General Education").trim();
   const [classDate, setClassDate] = useState(defaultClassDate());
-  const [careerStage, setCareerStage] = useState<CareerStage>("2");
+  const [careerStage, setCareerStage] = useState<CareerStage>("1");
   const [usesLabEquipment, setUsesLabEquipment] = useState(false);
+  const [showFactSheetInput, setShowFactSheetInput] = useState(false);
+  const [factSheetText, setFactSheetText] = useState("");
 
   const [matchedLac, setMatchedLac] = useState<PeerLibraryItem | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-  const [demoMode, setDemoMode] = useState(false);
-
-  // Step 3 interactive Concept Pack states
-  const [baselineDraft, setBaselineDraft] = useState("");
-  const [baselineSkipped, setBaselineSkipped] = useState(false);
-  const [selectedDiagnosticIdx, setSelectedDiagnosticIdx] = useState<number | null>(null);
-  const [selfCheckAnswers, setSelfCheckAnswers] = useState<Record<number, number>>({});
 
   const effectiveTopic = useCustomTopic ? customTopic.trim() : topic.trim();
   const daysUntilClass = computeDaysUntil(classDate);
   const meetsThreeDayWindow = daysUntilClass >= 3;
-
-  useEffect(() => {
-    setSelectedDiagnosticIdx(null);
-    setSelfCheckAnswers({});
-    setBaselineDraft("");
-    setBaselineSkipped(false);
-  }, [activeCase?.id]);
 
   // Check Shared LAC Library match automatically whenever class is < 3 school days away
   useEffect(() => {
@@ -186,163 +255,62 @@ export function LessonPrepStudio({
     }
   };
 
+  const handleFactSheetUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    setFactSheetText(text);
+    setShowFactSheetInput(true);
+  };
+
   const resetIntakeToBlank = () => {
     setTopic("");
     setCustomTopic("");
     setUseCustomTopic(false);
-    setCareerStage("2");
+    setCareerStage("1");
+    setFactSheetText("");
+    setShowFactSheetInput(false);
     setApiError(null);
-    setStep(1);
+    openLessonPrep();
   };
 
   const handleBuildSupport = async (e: FormEvent) => {
     e.preventDefault();
     if (!effectiveTopic) {
-      setApiError("Please select or enter an upcoming DepEd lesson topic.");
+      setApiError("Please select or enter an upcoming lesson topic.");
       return;
     }
     setApiError(null);
     setIsGenerating(true);
 
     try {
-      const outcome = await requestConceptPack(() => onGenerateConceptPack({
-        subject,
-        gradeLevel,
-        topic: effectiveTopic,
-        teacherMajor: teacherMajorInfo,
-        classDate,
-        careerStage,
-        startingMaterial: "",
-        baselineFirst: false,
-        baselineExplanation: "",
-        usesLabEquipment,
-      }));
+      const outcome = await requestConceptPack(() =>
+        onGenerateConceptPack({
+          subject,
+          gradeLevel,
+          topic: effectiveTopic,
+          teacherMajor: teacherMajorInfo,
+          classDate,
+          careerStage,
+          startingMaterial: "",
+          baselineFirst: false,
+          baselineExplanation: "",
+          usesLabEquipment,
+          factSheet: factSheetText.trim() || undefined,
+        })
+      );
       if (!outcome.ok) {
         setApiError(outcome.message);
         return;
       }
-      const result = outcome.value;
-      setDemoMode(Boolean(result.demo));
-      setSupportTab("bridge");
       setStep(2);
       onNotify("Your 10-Minute Concept Pack is ready.");
-    } catch (err) {
-      setApiError(
-        err instanceof Error
-          ? err.message
-          : "Unable to generate 10-Minute Concept Pack right now."
-      );
+    } catch {
+      setApiError("This pack is unavailable. Request a mentor-prepared pack.");
     } finally {
       setIsGenerating(false);
     }
   };
-
-  const handleSaveBaseline = async () => {
-    if (!activeCase || !baselineDraft.trim()) return;
-    await onPatchCase(activeCase.id, { baselineExplanation: baselineDraft.trim() });
-    setBaselineDraft("");
-  };
-
-  const handleSelectDiagnostic = async (idx: number) => {
-    setSelectedDiagnosticIdx(idx);
-    if (activeCase && !activeCase.diagnosticCompleted) {
-      await onPatchCase(activeCase.id, { diagnosticCompleted: true });
-    }
-  };
-
-  const handleSelectSelfCheck = async (itemIdx: number, optIdx: number) => {
-    if (!activeCase) return;
-    const nextAnswers = { ...selfCheckAnswers, [itemIdx]: optIdx };
-    setSelfCheckAnswers(nextAnswers);
-    const items = activeCase.support.quickSelfCheck || [];
-    if (Object.keys(nextAnswers).length === items.length && items.length > 0) {
-      const score = items.reduce(
-        (sum, item, idx) => sum + (nextAnswers[idx] === item.correctIndex ? 1 : 0),
-        0
-      );
-      await onPatchCase(activeCase.id, { selfCheckScore: score });
-    }
-  };
-
-  const handleDownloadOfflineGuide = async () => {
-    if (!activeCase) return;
-    const {
-      bigIdea,
-      specialtyBridge,
-      contrastiveExamples,
-      misconceptionDiagnostic,
-      misconceptionAlerts,
-      quickSelfCheck,
-      improvisedActivity,
-      simulatedStudentPrompt,
-    } = activeCase.support;
-
-    const textContent = [
-      `BANSAY OFFLINE 10-MINUTE CONCEPT PACK`,
-      `==========================================`,
-      `Status: ${activeCase.packStatus === "mentor-verified" ? "MENTOR-VERIFIED" : "AI DRAFT (UNVERIFIED)"}`,
-      `Topic: ${activeCase.topic} (${activeCase.subject} · ${activeCase.gradeLevel})`,
-      `Curriculum: ${bigIdea.curriculumGrounding}`,
-      `Bridge Lens: ${activeCase.teacherMajor} · Class Date: ${activeCase.classDate}`,
-      ``,
-      `1. BIG IDEA SUMMARY`,
-      bigIdea.summary,
-      ``,
-      `2. SPECIALTY BRIDGE FOR YOU (via ${activeCase.teacherMajor}): ${specialtyBridge.title}`,
-      specialtyBridge.explanation,
-      `For students (plain classroom explanation): ${specialtyBridge.trySaying}`,
-      `Where the ${activeCase.teacherMajor} model stops: ${specialtyBridge.limitationNote}`,
-      ``,
-      `3. CONTRASTIVE CAUSAL WORKED EXAMPLES`,
-      ...contrastiveExamples.flatMap((ex, i) => [
-        `Example ${i + 1}: ${ex.title}`,
-        `+ Positive: ${ex.positiveExample} | Why: ${ex.causalWhy}`,
-        `- Non-Example: ${ex.contrastiveNonExample} | Difference: ${ex.contrastWhyItDiffers}`,
-      ]),
-      ``,
-      `4. MISCONCEPTION DIAGNOSTIC & ALERTS`,
-      `Diagnostic Prompt: ${misconceptionDiagnostic.prompt}`,
-      `Mental Model: ${misconceptionDiagnostic.studentMentalModel}`,
-      `Refutation: ${misconceptionDiagnostic.refutation}`,
-      ...misconceptionAlerts.map(
-        (m, i) => `Q${i + 1}: ${m.question} -> Move: ${m.practicalResponse}`
-      ),
-      ``,
-      `5. QUICK SELF-CHECK (3 ITEMS)`,
-      ...quickSelfCheck.map(
-        (q) => `${q.question} (Answer: ${q.options[q.correctIndex]}) — ${q.feedback}`
-      ),
-      ``,
-      `6. IMPROVISED ACTIVITY: ${improvisedActivity.title}`,
-      `Materials: ${improvisedActivity.materials.join(", ")}`,
-      ...improvisedActivity.steps.map((s, i) => `Step ${i + 1}: ${s}`),
-      `Safety Protocol: ${improvisedActivity.safetyProtocol}`,
-      `Key Takeaway: ${improvisedActivity.keyTakeaway}`,
-      ``,
-      `7. OFFLINE REHEARSAL PROMPT`,
-      `Student (${simulatedStudentPrompt.studentName}): ${simulatedStudentPrompt.openingQuestion}`,
-    ].join("\n");
-
-    const blob = new Blob([textContent], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `bansay-concept-pack-${activeCase.subject.toLowerCase()}-${activeCase.gradeLevel
-      .replace(/\s+/g, "")
-      .toLowerCase()}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-
-    await onPatchCase(activeCase.id, { cachedOffline: true });
-    onNotify("Offline Concept Pack downloaded for low-connectivity study.");
-  };
-
-  const needsBaselineGate = Boolean(
-    activeCase &&
-      activeCase.baselineFirst &&
-      !activeCase.baselineExplanation.trim() &&
-      !baselineSkipped
-  );
 
   const presetOptions = DEPED_TOPIC_PRESETS[subject].filter(
     (preset) => preset.gradeLevel === gradeLevel
@@ -357,7 +325,7 @@ export function LessonPrepStudio({
               <p className="text-xs font-semibold text-violet-700 mb-1">
                 {copy.step1Kicker}
               </p>
-              <h1 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight text-balance">
+              <h1 id="lesson-prep-studio" ref={setupHeading} tabIndex={-1} className="font-display text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight text-balance">
                 {copy.step1Title}
               </h1>
             </div>
@@ -372,6 +340,22 @@ export function LessonPrepStudio({
               </button>
             )}
           </div>
+          {cases.length > 1 && activeCase && (
+            <div className="mt-3 w-full max-w-xs">
+              <CustomSelect
+                value={activeCase.id}
+                onChange={(caseId) => {
+                  onSelectCase(caseId);
+                  setStep(2);
+                }}
+                options={cases.map((item) => ({
+                  value: item.id,
+                  label: `${item.subject} (${item.gradeLevel}) - ${item.topic}`,
+                }))}
+                ariaLabel="Switch saved lesson"
+              />
+            </div>
+          )}
           <p className="text-sm text-slate-600 mt-1.5 max-w-2xl">
             Build a focused 10-minute guide around your upcoming topic, explained through concepts from your background.
           </p>
@@ -568,6 +552,48 @@ export function LessonPrepStudio({
               </label>
             </div>
 
+            {/* Optional Mentor Fact Sheet (JSON or plain text) */}
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="inline-flex items-center gap-2 text-xs font-semibold text-slate-800">
+                  <FileText className="w-3.5 h-3.5 text-slate-600" />
+                  <span>Optional mentor fact sheet (JSON or text)</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowFactSheetInput((prev) => !prev)}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-slate-900"
+                >
+                  <span>{showFactSheetInput ? "Hide" : "Attach fact sheet"}</span>
+                  {showFactSheetInput ? (
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              </div>
+              {showFactSheetInput && (
+                <div className="space-y-2.5 pt-1">
+                  <p className="text-[11px] text-slate-600">
+                    When present, the pack treats this fact sheet as source of truth and shows curriculum competency info when its references are verified. Leave blank for any general topic.
+                  </p>
+                  <input
+                    type="file"
+                    accept=".json,.txt,application/json,text/plain"
+                    onChange={(e) => void handleFactSheetUpload(e)}
+                    className="block w-full text-xs text-slate-600 file:mr-3 file:rounded-lg file:border file:border-slate-300 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-slate-800 hover:file:bg-slate-50"
+                  />
+                  <textarea
+                    rows={3}
+                    value={factSheetText}
+                    onChange={(e) => setFactSheetText(e.target.value)}
+                    placeholder="Paste a mentor fact sheet JSON or plain text (Competency:, Core explanation:, Key terms:, Approved materials:)..."
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900"
+                  />
+                </div>
+              )}
+            </div>
+
             {apiError && <FieldError>{apiError}</FieldError>}
 
             <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
@@ -596,97 +622,95 @@ export function LessonPrepStudio({
           </form>
         </section>
       ) : (
-        /* Step 3: 6-Part 10-Minute Concept Pack */
-        <section className="space-y-5">
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-7">
-            <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="space-y-1.5">
-                <p className="text-xs font-medium text-slate-500">
-                  <span className="font-semibold text-violet-700">{activeCase.subject}</span>
-                  {" · "}
-                  <span>{activeCase.gradeLevel}</span>
-                  {" · "}
-                  <span>{activeCase.support.bigIdea.curriculumGrounding}</span>
-                  {" · "}
-                  <span>Bridge lens: {activeCase.teacherMajor}</span>
-                  {" · "}
-                  <span>Lesson proficiency: Level {activeCase.careerStage}</span>
-                </p>
-                <h1 className="font-display text-xl sm:text-2xl font-bold text-slate-900 tracking-tight text-balance">
-                  {activeCase.topic}
-                </h1>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 shrink-0">
-                {cases.length > 1 && (
-                  <div className="w-56">
-                    <CustomSelect
-                      value={activeCase.id}
-                      onChange={(caseId) => {
-                        onSelectCase(caseId);
-                        setDemoMode(false);
-                      }}
-                      options={cases.map((c) => ({
-                        value: c.id,
-                        label: `${c.subject} (${c.gradeLevel}) — ${c.topic.slice(0, 32)}`,
-                      }))}
-                      className="text-xs font-medium"
-                      ariaLabel="Switch saved lesson"
-                    />
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => void handleDownloadOfflineGuide()}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 whitespace-nowrap"
-                >
-                  {activeCase.cachedOffline ? (
-                    <BookmarkCheck className="w-3.5 h-3.5 text-emerald-700" />
-                  ) : (
-                    <Download className="w-3.5 h-3.5" />
-                  )}
-                  <span>Download offline pack</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={resetIntakeToBlank}
-                  className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 whitespace-nowrap"
-                >
-                  New lesson
-                </button>
-              </div>
-            </div>
-
-            {activeCase.packStatus === "mentor-verified" && (
-              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-950 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
-                <strong>Mentor-Verified Concept Pack</strong>
-                <span>Reviewed by {activeCase.mentorReview.mentorName}.</span>
-              </div>
-            )}
-            <div className="mt-6">
-              {isCurrentConceptPack(activeCase.support.validatedPack) ? (
-                <ConceptPackSteps pack={activeCase.support.validatedPack} />
-              ) : (
-                <div role="status" className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-950">
-                  <strong>This saved Concept Pack uses an older format.</strong> Start a new lesson to generate it in the current format.
-                  <button type="button" onClick={resetIntakeToBlank} className="ml-3 rounded-lg bg-violet-700 px-3 py-2 text-white">Start a new lesson</button>
+        <section aria-label="Concept Pack" className="min-w-0 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <nav aria-label="Breadcrumb">
+              <a href="#lesson-prep-studio" onClick={(event) => {
+                event.preventDefault();
+                openLessonPrep();
+              }} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 font-semibold text-bansay-strong hover:bg-bansay-tint">
+                <ArrowLeft size={17} aria-hidden="true" /> Lesson Prep Studio
+              </a>
+            </nav>
+            <div className="relative" onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) setShowPackMenu(false);
+            }} onKeyDown={(event) => {
+              if (event.key === "Escape" && showPackMenu) {
+                event.stopPropagation();
+                setShowPackMenu(false);
+                menuButton.current?.focus();
+              }
+            }}>
+              <button ref={menuButton} type="button" className="icon-button min-h-11 min-w-11" aria-label="Concept Pack options" aria-expanded={showPackMenu}
+                onClick={() => setShowPackMenu((open) => !open)}>
+                <MoreHorizontal size={22} aria-hidden="true" />
+              </button>
+              {showPackMenu && (
+                <div className="absolute right-0 top-full z-20 w-48 rounded-xl border border-bansay-line bg-white p-1 shadow-lg">
+                  <button type="button" className="ui-button ui-button-quiet w-full justify-start" onClick={() => {
+                    if (!hasSteps) {
+                      resetIntakeToBlank();
+                      return;
+                    }
+                    menuButton.current?.focus();
+                    setShowPackMenu(false);
+                    confirmNewLesson.current?.showModal();
+                  }}>Start a new lesson</button>
                 </div>
               )}
             </div>
-            <div className="mt-6 pt-5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4">
-              <p className="text-xs text-slate-500">
-                Ready to test this explanation in a quick student exchange?
-              </p>
-              <button
-                type="button"
-                onClick={onGoToRehearsal}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-700 hover:bg-violet-800 text-white text-sm font-semibold transition-colors whitespace-nowrap shrink-0"
-              >
-                <span>Practice explaining this</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
+          </div>
+
+          <dialog ref={confirmNewLesson} aria-labelledby="new-lesson-title" className="m-auto w-[min(92vw,26rem)] rounded-2xl border border-bansay-line bg-white p-5 backdrop:bg-slate-950/45">
+            <form method="dialog" onSubmit={(event) => {
+              if ((event.nativeEvent as SubmitEvent).submitter?.getAttribute("value") === "start") {
+                resetIntakeToBlank();
+              }
+            }}>
+              <h2 id="new-lesson-title" className="text-bansay-deep">Your progress is saved. Start a new lesson?</h2>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="submit" value="cancel" autoFocus className="ui-button ui-button-secondary">Cancel</button>
+                <button type="submit" value="start" className="ui-button ui-button-primary">Start</button>
+              </div>
+            </form>
+          </dialog>
+
+          <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-3 sm:p-7">
+            <header className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="inline-flex items-center gap-1.5 rounded-md border border-bansay-line bg-bansay-tint px-2.5 py-1 font-semibold text-bansay-strong">
+                  <ShieldCheck className="size-3.5" aria-hidden="true" />
+                  {activeCase.packStatus === "mentor-verified" ? "Mentor verified" : "Unverified AI draft"}
+                </span>
+                <span className="font-medium text-slate-600">{activeCase.subject} &middot; {activeCase.gradeLevel}</span>
+              </div>
+              <h1 className="font-display font-bold text-slate-900 wrap-anywhere">{activeCase.topic}</h1>
+            </header>
+
+            {hasSteps ? (
+              <ConceptPackSteps
+                key={activeCase.id}
+                pack={currentPack}
+                teacherMajor={activeCase.teacherMajor}
+                progressKey={`bansay-pack-progress-${user.id}-${activeCase.id}`}
+                renderOfflineFooter={(backButton, practiceButton) => (
+                  <OfflinePackCard storageKey={`bansay-offline-pack-${user.id}-${activeCase.id}`} text={offlinePackText(activeCase, currentPack)} backButton={backButton} practiceButton={practiceButton} />
+                )}
+                onSelfCheckComplete={(score) => void onPatchCase(activeCase.id, { selfCheckScore: score })}
+                onPracticeExplaining={onGoToRehearsal}
+              />
+            ) : (
+              <div className="space-y-4">
+                <p role="status" className="rounded-xl border border-slate-300 bg-slate-50 p-5 text-sm text-slate-900">
+                  <strong>This saved Concept Pack uses an older format.</strong> Start a new lesson to generate it in the 7-step format.
+                </p>
+                <div className="flex justify-end border-t border-slate-200 pt-4">
+                  <button type="button" onClick={onGoToRehearsal} className="ui-button ui-button-primary h-[48px] w-[12.5rem] shrink-0 whitespace-nowrap px-2!">
+                    Practice explaining this <ArrowRight className="size-4 shrink-0" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}
