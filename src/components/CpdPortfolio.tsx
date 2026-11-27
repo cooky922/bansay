@@ -3,33 +3,58 @@ import {
   CheckCircle2,
   Clock,
   Download,
+  FileCheck2,
   FileText,
   Lock,
   Plus,
+  ShieldCheck,
   X,
 } from "lucide-react";
 import type {
   BansayLanguage,
   ClassroomEvidenceItem,
   CompetencyQuarter,
+  LessonCase,
 } from "../types/bansay";
 import { UI_COPY } from "../data/bansayData";
 import { CustomSelect } from "./CustomSelect";
-import { FieldError } from "./ui";
+import { Checkbox, FieldError } from "./ui";
 
 interface CpdPortfolioProps {
   language: BansayLanguage;
   quarters: CompetencyQuarter[];
   evidenceItems: ClassroomEvidenceItem[];
-  onAddEvidence: (item: ClassroomEvidenceItem) => void;
+  cases: LessonCase[];
+  onAddEvidence: (payload: {
+    title: string;
+    subject: string;
+    revisionUsed: string;
+    classroomOutcome: string;
+    evidenceType: ClassroomEvidenceItem["evidenceType"];
+    colleagueObserved: boolean;
+    hasPhotoAttachment: boolean;
+    noStudentFacesConfirmed: boolean;
+  }) => Promise<void>;
+  onLogPortfolioExport: (exportType: "pmes-annex-a" | "cpd-summary") => Promise<void>;
   practiceHours: number;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 export function CpdPortfolio({
   language,
   quarters,
   evidenceItems,
+  cases,
   onAddEvidence,
+  onLogPortfolioExport,
   practiceHours,
 }: CpdPortfolioProps) {
   const copy = UI_COPY[language];
@@ -43,43 +68,82 @@ export function CpdPortfolio({
   const [revisionUsed, setRevisionUsed] = useState("");
   const [classroomOutcome, setClassroomOutcome] = useState("");
   const [colleagueObserved, setColleagueObserved] = useState(false);
+  const [hasPhotoAttachment, setHasPhotoAttachment] = useState(false);
+  const [noStudentFacesConfirmed, setNoStudentFacesConfirmed] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const totalCompleted = quarters.reduce((sum, q) => sum + q.completedCount, 0);
   const totalTarget = quarters.reduce((sum, q) => sum + q.targetCount, 0);
+  const verifiedCases = cases.filter((c) => c.packStatus === "mentor-verified");
+  const strippedMediaCount = cases.reduce(
+    (sum, c) =>
+      sum +
+      c.mediaAssets.filter((m) => m.status === "stripped-from-portfolio").length,
+    0
+  );
+  const vaultPhotoCount = cases.reduce(
+    (sum, c) =>
+      sum + c.mediaAssets.filter((m) => m.portfolioIncluded && m.status !== "purged").length,
+    0
+  );
 
-  const handleSubmitEvidence = (e: FormEvent) => {
+  const handleSubmitEvidence = async (e: FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) { setFormError("Enter a short title so you can identify this evidence later."); return; }
-    if (!revisionUsed.trim()) { setFormError("Describe the revision you used; this is required for your portfolio record."); return; }
+    if (!title.trim()) {
+      setFormError("Enter a short title so you can identify this evidence later.");
+      return;
+    }
+    if (!revisionUsed.trim()) {
+      setFormError("Describe the revision you used; this is required for your portfolio record.");
+      return;
+    }
+    if (hasPhotoAttachment && !noStudentFacesConfirmed) {
+      setFormError(
+        "Confirm that your setup photo shows only classroom materials or boardwork, with no student faces."
+      );
+      return;
+    }
     setFormError(null);
+    setIsSubmitting(true);
 
-    const newItem: ClassroomEvidenceItem = {
-      id: `ev-${Date.now()}`,
-      title: title.trim(),
-      subject: subject.trim(),
-      date: new Date().toISOString().slice(0, 10),
-      revisionUsed: revisionUsed.trim(),
-      classroomOutcome:
-        classroomOutcome.trim() || "Applied revised explanation during class discussion.",
-      evidenceType,
-      verificationStatus: colleagueObserved ? "Colleague observed" : "Teacher logged",
-    };
-
-    onAddEvidence(newItem);
-    setTitle("");
-    setRevisionUsed("");
-    setClassroomOutcome("");
-    setColleagueObserved(false);
-    setModalOpen(false);
+    try {
+      await onAddEvidence({
+        title: title.trim(),
+        subject: subject.trim(),
+        revisionUsed: revisionUsed.trim(),
+        classroomOutcome:
+          classroomOutcome.trim() || "Applied revised explanation during class discussion.",
+        evidenceType,
+        colleagueObserved,
+        hasPhotoAttachment,
+        noStudentFacesConfirmed,
+      });
+      setTitle("");
+      setRevisionUsed("");
+      setClassroomOutcome("");
+      setColleagueObserved(false);
+      setHasPhotoAttachment(false);
+      setNoStudentFacesConfirmed(false);
+      setModalOpen(false);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : "Unable to save evidence.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleExportSummary = () => {
+  const handleExport = async (exportType: "pmes-annex-a" | "cpd-summary") => {
+    const isPmes = exportType === "pmes-annex-a";
+    const docTitle = isPmes
+      ? "BANSAY Teacher-Custody PMES Annex A / MOV Pack"
+      : "BANSAY Teaching Evidence & CPD Summary";
+
     const html = `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>BANSAY Teaching Evidence Portfolio Summary</title>
+<title>${escapeHtml(docTitle)}</title>
 <style>
   body { font-family: system-ui, -apple-system, sans-serif; color: #1e293b; max-width: 780px; margin: 40px auto; padding: 0 24px; line-height: 1.55; }
   h1 { color: #31175B; margin-bottom: 4px; }
@@ -90,26 +154,43 @@ export function CpdPortfolio({
 </style>
 </head>
 <body>
-  <h1>BANSAY Teaching Evidence Portfolio</h1>
-  <p class="muted">Annual Competency Review Track (SY 2026–2027) · Practice hours: ${practiceHours.toFixed(1)} h · Competencies ready: ${totalCompleted}/${totalTarget}</p>
+  <h1>${escapeHtml(docTitle)}</h1>
+  <p class="muted">Teacher-Custody Export · SY 2026–2027 · Competencies ready: ${totalCompleted}/${totalTarget} · Practice hours: ${practiceHours.toFixed(1)} h</p>
   <div class="box">
-    <strong>Note on Recognition:</strong> Online rehearsal hours and voluntary classroom implementation logs are tracked separately. Eligibility for PRC CPD units or DepEd credits depends on formal accredited partner agreements.
+    <strong>RA 10173 &amp; Non-Punitive Safeguard:</strong> This export is 100% teacher-initiated. Raw rehearsal turns, error logs, voice recordings, and Phase 2 COT videos are automatically stripped and excluded.
   </div>
-  <h2>Quarterly Competency Map</h2>
+  <h2>Mentor-Verified Concept Packs (${verifiedCases.length})</h2>
+  <div class="box">
+    ${
+      verifiedCases.length
+        ? verifiedCases
+            .map(
+              (c) =>
+                `<div class="item"><strong>${escapeHtml(c.subject)} (${escapeHtml(c.gradeLevel)}) — ${escapeHtml(c.topic)}</strong><br/><span class="muted">${escapeHtml(c.support.bigIdea.curriculumGrounding)} · PPST ${escapeHtml(c.support.bigIdea.ppstIndicators.join(", "))}</span><br/><em>Big Idea:</em> ${escapeHtml(c.support.bigIdea.summary)}</div>`
+            )
+            .join("")
+        : "<p class='muted'>No Mentor-Verified Concept Packs yet. Pending AI Drafts remain excluded.</p>"
+    }
+  </div>
+  ${
+    !isPmes
+      ? `<h2>Quarterly Competency Map</h2>
   <div class="box">
     ${quarters
       .map(
         (q) =>
-          `<div class="item"><strong>${q.quarter}: ${q.title}</strong> (${q.completedCount}/${q.targetCount}) — ${q.description}</div>`
+          `<div class="item"><strong>${escapeHtml(q.quarter)}: ${escapeHtml(q.title)}</strong> (${q.completedCount}/${q.targetCount}) — ${escapeHtml(q.description)}</div>`
       )
       .join("")}
-  </div>
-  <h2>Classroom Implementation Evidence</h2>
+  </div>`
+      : ""
+  }
+  <h2>Classroom Implementation Evidence (MOV)</h2>
   <div class="box">
     ${evidenceItems
       .map(
         (ev) =>
-          `<div class="item"><strong>${ev.title}</strong> (${ev.subject} · ${ev.date} · ${ev.verificationStatus})<br/><em>Revision used:</em> ${ev.revisionUsed}<br/><em>What followed in class:</em> ${ev.classroomOutcome}</div>`
+          `<div class="item"><strong>${escapeHtml(ev.title)}</strong> (${escapeHtml(ev.subject)} · ${escapeHtml(ev.date)} · ${escapeHtml(ev.verificationStatus)})<br/><em>Revision used:</em> ${escapeHtml(ev.revisionUsed)}<br/><em>What followed in class:</em> ${escapeHtml(ev.classroomOutcome)}${ev.photoRetentionNotice ? `<br/><span class="muted">${escapeHtml(ev.photoRetentionNotice)}</span>` : ""}</div>`
       )
       .join("")}
   </div>
@@ -120,9 +201,12 @@ export function CpdPortfolio({
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "bansay-teaching-evidence-portfolio.html";
+    a.download = isPmes
+      ? "bansay-pmes-annex-a-mov-pack.html"
+      : "bansay-cpd-portfolio-summary.html";
     a.click();
     URL.revokeObjectURL(url);
+    await onLogPortfolioExport(exportType);
   };
 
   return (
@@ -141,17 +225,27 @@ export function CpdPortfolio({
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleExportSummary}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-700 hover:bg-violet-800 text-white text-xs font-semibold transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-violet-600"
-        >
-          <Download className="w-4 h-4" />
-          <span>{copy.exportPortfolioBtn}</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void handleExport("pmes-annex-a")}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-700 hover:bg-violet-800 text-white text-xs font-semibold transition-colors whitespace-nowrap shrink-0"
+          >
+            <FileCheck2 className="w-4 h-4" />
+            <span>Export PMES Annex A MOV Pack</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleExport("cpd-summary")}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold transition-colors whitespace-nowrap shrink-0"
+          >
+            <Download className="w-4 h-4" />
+            <span>Export CPD Summary</span>
+          </button>
+        </div>
       </div>
 
-      {/* Annual Track Purple Banner (Figure 7) */}
+      {/* Annual Track Purple Banner */}
       <section className="rounded-2xl bg-[#381B68] text-white p-6 sm:p-7">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
@@ -159,17 +253,17 @@ export function CpdPortfolio({
               <span className="font-display text-2xl font-extrabold leading-none">
                 {totalCompleted}
               </span>
-              <span className="text-[11px] text-purple-200 mt-0.5">
-                of {totalTarget}
-              </span>
+              <span className="text-[11px] text-purple-200 mt-0.5">of {totalTarget}</span>
             </div>
             <div>
-              <p className="text-xs text-purple-200 font-medium">2026 Annual Track</p>
+              <p className="text-xs text-purple-200 font-medium">
+                SY 2026–2027 · Teacher-Custody Portfolio
+              </p>
               <h2 className="font-display text-lg sm:text-xl font-bold mt-0.5">
                 You&apos;re building steady, classroom-ready evidence.
               </h2>
               <p className="text-xs text-purple-200/85 mt-1">
-                {Math.max(0, totalTarget - totalCompleted)} more competencies complete your annual portfolio review package.
+                {verifiedCases.length} Mentor-Verified Concept Pack(s) · {evidenceItems.length} MOV evidence log(s) · {vaultPhotoCount} setup photo(s).
               </p>
             </div>
           </div>
@@ -186,11 +280,11 @@ export function CpdPortfolio({
         </div>
 
         <p className="mt-5 pt-4 border-t border-white/15 text-xs text-purple-100/85 leading-relaxed">
-          Rehearsal progress and voluntary classroom implementation logs are tracked separately. Future PRC CPD units or DepEd credit recognition remain subject to formal accredited partner agreements.
+          Privacy Guarantee: Practice webcam clips, voice notes ({strippedMediaCount} excluded), and classroom clips are never included in your exported portfolio. Only verified lesson guides and your own evidence notes are exported.
         </p>
       </section>
 
-      {/* Two-Column Map + Classroom Evidence (Figure 7) */}
+      {/* Two-Column Map + Classroom Evidence */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Competency Map */}
         <section className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
@@ -202,7 +296,7 @@ export function CpdPortfolio({
               </h2>
             </div>
             <span className="text-xs text-slate-500 tabular-nums">
-              School year 2026–2027
+              SY 2026–2027
             </span>
           </div>
 
@@ -256,9 +350,7 @@ export function CpdPortfolio({
         <section className="lg:col-span-6 bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
           <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div>
-              <p className="text-xs font-semibold text-violet-700">
-                Classroom evidence
-              </p>
+              <p className="text-xs font-semibold text-violet-700">Classroom evidence</p>
               <h2 className="font-display text-lg font-bold text-slate-900">
                 Implementation proof
               </h2>
@@ -274,44 +366,54 @@ export function CpdPortfolio({
           </div>
 
           <div className="space-y-3">
-            {evidenceItems.map((item) => (
-              <div
-                key={item.id}
-                className="rounded-xl border border-slate-200 p-4 space-y-2"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-2.5 min-w-0">
-                    <FileText className="w-4 h-4 text-violet-700 mt-0.5 shrink-0" />
-                    <div className="min-w-0">
-                      <h3 className="text-sm font-semibold text-slate-900">
-                        {item.title}
-                      </h3>
-                      <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
-                        {item.subject} · {item.date} · {item.evidenceType}
-                      </p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-medium text-emerald-800 whitespace-nowrap shrink-0">
-                    {item.verificationStatus}
-                  </span>
-                </div>
-
-                <p className="text-xs text-slate-700 leading-relaxed">
-                  <strong className="text-slate-900">Revision used:</strong>{" "}
-                  {item.revisionUsed}
-                </p>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  <strong className="text-slate-800">What followed in class:</strong>{" "}
-                  {item.classroomOutcome}
-                </p>
+            {evidenceItems.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-xs text-slate-500">
+                No classroom evidence logged yet. Use &ldquo;Add evidence&rdquo; after applying a Concept Pack in class.
               </div>
-            ))}
+            ) : (
+              evidenceItems.map((item) => (
+                <div
+                  key={item.id}
+                  className="rounded-xl border border-slate-200 p-4 space-y-2"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <FileText className="w-4 h-4 text-violet-700 mt-0.5 shrink-0" />
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-semibold text-slate-900">{item.title}</h3>
+                        <p className="text-xs text-slate-500 mt-0.5 tabular-nums">
+                          {item.subject} · {item.date} · {item.evidenceType}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-medium text-emerald-800 whitespace-nowrap shrink-0">
+                      {item.verificationStatus}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-700 leading-relaxed">
+                    <strong className="text-slate-900">Revision used:</strong>{" "}
+                    {item.revisionUsed}
+                  </p>
+                  <p className="text-xs text-slate-600 leading-relaxed">
+                    <strong className="text-slate-800">What followed in class:</strong>{" "}
+                    {item.classroomOutcome}
+                  </p>
+                  {item.photoRetentionNotice && (
+                    <p className="text-[11px] text-violet-800 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+                      <span>{item.photoRetentionNotice}</span>
+                    </p>
+                  )}
+                </div>
+              ))
+            )}
           </div>
 
           <div className="rounded-xl bg-slate-50 border border-slate-200 p-3.5 flex items-start gap-2.5 text-xs text-slate-600">
             <Lock className="w-4 h-4 text-slate-500 mt-0.5 shrink-0" />
             <span>
-              Classroom evidence stays separate from private rehearsal attempts and is only exported when you choose to share your summary.
+              Classroom evidence stays under your custody and is never shared with school heads or coordinators unless you export and submit it yourself.
             </span>
           </div>
         </section>
@@ -352,11 +454,13 @@ export function CpdPortfolio({
                   type="text"
                   required
                   value={title}
-                  onChange={(e) => { setTitle(e.target.value); if (formError) setFormError(null); }}
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    if (formError) setFormError(null);
+                  }}
                   placeholder="e.g., Dried saltwater saucer check with Grade 7 Ruby"
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-900"
                 />
-                {formError?.startsWith("Enter a short") && <FieldError>{formError}</FieldError>}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -375,7 +479,18 @@ export function CpdPortfolio({
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Evidence type
                   </label>
-                  <CustomSelect value={evidenceType} onChange={(value) => setEvidenceType(value as ClassroomEvidenceItem["evidenceType"])} options={["Improvised Lab Setup", "Classroom Reflection", "Colleague Observation"].map((item) => ({ value: item, label: item }))} ariaLabel="Evidence type" />
+                  <CustomSelect
+                    value={evidenceType}
+                    onChange={(value) =>
+                      setEvidenceType(value as ClassroomEvidenceItem["evidenceType"])
+                    }
+                    options={[
+                      "Improvised Lab Setup",
+                      "Classroom Reflection",
+                      "Colleague Observation",
+                    ].map((item) => ({ value: item, label: item }))}
+                    ariaLabel="Evidence type"
+                  />
                 </div>
               </div>
 
@@ -387,11 +502,13 @@ export function CpdPortfolio({
                   rows={2}
                   required
                   value={revisionUsed}
-                  onChange={(e) => { setRevisionUsed(e.target.value); if (formError) setFormError(null); }}
+                  onChange={(e) => {
+                    setRevisionUsed(e.target.value);
+                    if (formError) setFormError(null);
+                  }}
                   placeholder="Describe the explanation or demonstration change you applied..."
                   className="w-full text-sm border border-slate-300 rounded-lg px-3 py-2 text-slate-900"
                 />
-                {formError?.startsWith("Describe the revision") && <FieldError>{formError}</FieldError>}
               </div>
 
               <div>
@@ -408,14 +525,38 @@ export function CpdPortfolio({
               </div>
 
               <label className="flex items-center gap-2 text-xs text-slate-700">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={colleagueObserved}
                   onChange={(e) => setColleagueObserved(e.target.checked)}
-                  className="rounded border-slate-300 text-violet-700"
                 />
                 <span>A fellow teacher observed the physical setup or demonstration locally</span>
               </label>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-2.5">
+                <label className="flex items-center gap-2 text-xs font-semibold text-slate-800">
+                  <Checkbox
+                    checked={hasPhotoAttachment}
+                    onChange={(e) => {
+                      setHasPhotoAttachment(e.target.checked);
+                      if (!e.target.checked) setNoStudentFacesConfirmed(false);
+                    }}
+                  />
+                  <span>Attach setup or boardwork photo (&le; 1 MB, kept private)</span>
+                </label>
+                {hasPhotoAttachment && (
+                  <label className="flex items-start gap-2 text-xs text-violet-950 pl-1">
+                    <Checkbox
+                      checked={noStudentFacesConfirmed}
+                      onChange={(e) => setNoStudentFacesConfirmed(e.target.checked)}
+                    />
+                    <span>
+                      I confirm this photo shows only classroom materials or boardwork, with zero student faces or personal learner data (purged within 30 days of deletion/expiry).
+                    </span>
+                  </label>
+                )}
+              </div>
+
+              {formError && <FieldError>{formError}</FieldError>}
 
               <div className="flex justify-end gap-2 pt-2">
                 <button
@@ -427,9 +568,10 @@ export function CpdPortfolio({
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-violet-700 hover:bg-violet-800 text-white text-xs font-semibold"
+                  disabled={isSubmitting}
+                  className="px-4 py-2 rounded-xl bg-violet-700 hover:bg-violet-800 disabled:opacity-60 text-white text-xs font-semibold"
                 >
-                  Save to portfolio
+                  {isSubmitting ? "Saving…" : "Save to portfolio"}
                 </button>
               </div>
             </form>

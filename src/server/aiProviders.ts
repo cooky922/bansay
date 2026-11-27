@@ -58,6 +58,7 @@ export async function generateOpenRouterJson<T>({
       : []),
   ];
   const response = await createOpenRouterCompletion({
+    max_tokens: 1800,
     messages: [
       { role: "system", content: instructions },
       { role: "user", content: imageData ? content : input },
@@ -88,6 +89,7 @@ export async function generateOpenRouterText({
   input: string;
 }): Promise<string> {
   const response = await createOpenRouterCompletion({
+    max_tokens: 450,
     messages: [
       { role: "system", content: instructions },
       { role: "user", content: input },

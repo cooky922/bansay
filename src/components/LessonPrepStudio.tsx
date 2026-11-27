@@ -1,188 +1,215 @@
-import { useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   AlertTriangle,
   ArrowRight,
   BookmarkCheck,
-  Calendar,
   CheckCircle2,
   Download,
   FlaskConical,
   ImagePlus,
-  Info,
   Lightbulb,
   Loader2,
   Lock,
+  ShieldCheck,
   Sparkles,
   Trash2,
 } from "lucide-react";
 import type {
+  AuthUserProfile,
   BansayLanguage,
-  GeneratedLessonSupport,
+  CareerStage,
   LessonCase,
+  PeerLibraryItem,
   SubjectName,
 } from "../types/bansay";
 import {
+  CAREER_STAGE_LABELS,
+  curriculumFrameworkForGrade,
   DEPED_TOPIC_PRESETS,
-  TEACHER_MAJORS,
   UI_COPY,
 } from "../data/bansayData";
-import type { TeacherProfileDraft } from "./SessionStartFlow";
 import { CustomSelect } from "./CustomSelect";
 import { DatePicker } from "./DatePicker";
 import { Checkbox, FieldError, Tabs } from "./ui";
+import { bansayFetch } from "../lib/apiClient";
 
 interface LessonPrepStudioProps {
   language: BansayLanguage;
   lowDataMode: boolean;
+  user: AuthUserProfile;
   cases: LessonCase[];
-  activeCase: LessonCase;
+  activeCase?: LessonCase;
   onSelectCase: (id: string) => void;
-  onCreateOrUpdateCase: (newCase: LessonCase) => void;
-  onUpdateActiveCase: (updated: LessonCase) => void;
+  onGenerateConceptPack: (payload: {
+    subject: SubjectName;
+    gradeLevel: string;
+    topic: string;
+    teacherMajor: string;
+    classDate: string;
+    careerStage: CareerStage;
+    startingMaterial: string;
+    baselineFirst: boolean;
+    baselineExplanation: string;
+    usesLabEquipment: boolean;
+    imageData?: { mimeType: string; data: string };
+    uploadedImagePreview?: string;
+    noStudentFacesConfirmed?: boolean;
+  }) => Promise<{ demo?: boolean }>;
+  onPatchCase: (
+    caseId: string,
+    patch: Partial<{
+      baselineExplanation: string;
+      diagnosticCompleted: boolean;
+      selfCheckScore: number;
+      cachedOffline: boolean;
+    }>
+  ) => Promise<void>;
   onGoToRehearsal: () => void;
   onNotify: (message: string) => void;
-  teacherProfile: TeacherProfileDraft;
 }
 
-type SupportTab = "bridge" | "misconceptions" | "activity";
-type IntakeDraft = {
-  subject: SubjectName;
-  gradeLevel: string;
-  topic: string;
-  classDate: string;
-  baselineFirst: boolean;
-  baselineExplanation: string;
-  careerStage: "1" | "2" | "3" | "4";
-};
+type SupportTab =
+  | "bridge"
+  | "examples"
+  | "diagnostic"
+  | "selfcheck"
+  | "activity"
+  | "judge";
 
 function computeDaysUntil(dateStr: string): number {
+  if (!dateStr) return 5;
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   const target = new Date(dateStr + "T00:00:00");
+  if (Number.isNaN(target.getTime())) return 5;
   return Math.round((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
 }
 
-function WorkspaceLessonIntake({
-  language,
-  isGenerating,
-  error,
-  onBuild,
-}: {
-  language: BansayLanguage;
-  isGenerating: boolean;
-  error: string | null;
-  onBuild: (draft: IntakeDraft) => void;
-}) {
-  const [subject, setSubject] = useState<SubjectName>("Science");
-  const [gradeLevel, setGradeLevel] = useState("Grade 7");
-  const [topic, setTopic] = useState(DEPED_TOPIC_PRESETS.Science[0].topic);
-  const [customTopic, setCustomTopic] = useState(false);
-  const [classDate, setClassDate] = useState("");
-  const [baselineFirst, setBaselineFirst] = useState(false);
-  const [baselineExplanation, setBaselineExplanation] = useState("");
-  const [careerStage, setCareerStage] = useState<"1" | "2" | "3" | "4">("2");
-  const [submitAttempted, setSubmitAttempted] = useState(false);
-  const presets = DEPED_TOPIC_PRESETS[subject].filter((item) => item.gradeLevel === gradeLevel);
-  const canBuild = Boolean(topic.trim() && (!baselineFirst || baselineExplanation.trim()));
-
-  const changeSubject = (nextSubject: SubjectName) => {
-    const first = DEPED_TOPIC_PRESETS[nextSubject][0];
-    setSubject(nextSubject);
-    setGradeLevel(first.gradeLevel);
-    setTopic(first.topic);
-    setCustomTopic(false);
-  };
-  const changeGrade = (nextGrade: string) => {
-    setGradeLevel(nextGrade);
-    const first = DEPED_TOPIC_PRESETS[subject].find((item) => item.gradeLevel === nextGrade);
-    if (first && !customTopic) setTopic(first.topic);
-  };
-
-  return (
-    <section className="w-full rounded-2xl border border-slate-200 bg-white p-5 sm:p-8">
-      <h1 className="font-display text-2xl font-bold text-slate-900">Tell us what you are teaching</h1>
-      <div className="mt-6 space-y-5">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {(["Science", "Mathematics", "English"] as SubjectName[]).map((item) => <button type="button" key={item} onClick={() => changeSubject(item)} className={`rounded-xl border p-4 text-left text-sm font-semibold ${subject === item ? "border-violet-700 bg-violet-50 text-violet-950 ring-1 ring-violet-700" : "border-slate-200 text-slate-700 hover:border-violet-300"}`}>{item}</button>)}
-        </div>
-        <div className="grid gap-3 sm:grid-cols-[7.5rem_minmax(0,1fr)]">
-          <label className="text-sm font-medium text-slate-700">Grade level<CustomSelect value={gradeLevel} onChange={changeGrade} options={["Grade 7", "Grade 8", "Grade 9", "Grade 10"].map((item) => ({ value: item, label: item }))} className="mt-1.5" ariaLabel="Grade level" /></label>
-          <div className="text-sm font-medium text-slate-700"><div className="mb-0.5 flex items-center justify-between gap-3"><label htmlFor="deped-topic">DepEd topic</label><button type="button" onClick={() => { const next = !customTopic; setCustomTopic(next); if (next) setTopic(""); else { const first = DEPED_TOPIC_PRESETS[subject].find((item) => item.gradeLevel === gradeLevel); if (first) setTopic(first.topic); } }} className="text-sm font-semibold text-violet-700 hover:text-violet-900">{customTopic ? "Use a preset" : "Custom topic"}</button></div>{customTopic ? <input id="deped-topic" value={topic} onChange={(event) => setTopic(event.target.value)} className="input" placeholder="Your lesson topic" /> : <CustomSelect value={topic} onChange={setTopic} options={presets.map((item) => ({ value: item.topic, label: item.topic }))} placeholder={presets.length ? "Select a DepEd preset" : "No preset for this grade"} disabled={!presets.length} className="mt-1.5" ariaLabel="DepEd topic" />}</div>
-          <label className="text-sm font-medium text-slate-700 sm:col-span-2">Class date<DatePicker value={classDate} onChange={setClassDate} locale={language} className="mt-1.5" /></label>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2"><div><p className="flex items-center gap-1 text-sm font-medium text-slate-700">Private self-calibration<button type="button" title="Sets the amount of support for this lesson. It does not rate you." aria-label="About private self-calibration" className="text-slate-400 hover:text-violet-700"><Info className="h-3.5 w-3.5" /></button></p><div className="relative mt-1.5 grid grid-cols-4 rounded-xl bg-slate-100 p-1"><span className="absolute inset-y-1 rounded-lg bg-violet-700 shadow-sm transition-transform duration-200" style={{ width: "calc(25% - 0.25rem)", transform: `translateX(${(Number(careerStage) - 1) * 100}%)` }} />{(["1", "2", "3", "4"] as const).map((stage) => <button type="button" key={stage} onClick={() => setCareerStage(stage)} className={`relative z-10 rounded-lg px-1 py-2 text-xs font-semibold ${careerStage === stage ? "text-white" : "text-slate-500"}`} aria-pressed={careerStage === stage}>{stage}</button>)}</div><p className="mt-1 text-xs text-slate-500">{({ "1": "Beginning", "2": "Proficient", "3": "Highly Proficient", "4": "Distinguished" } as const)[careerStage]}</p></div><div className="rounded-xl border border-violet-100 bg-violet-50/50 p-4"><div className="flex items-center gap-2 text-sm font-semibold text-slate-800"><input id="baseline-first" type="checkbox" checked={baselineFirst} onChange={(event) => setBaselineFirst(event.target.checked)} /><label htmlFor="baseline-first">Baseline First</label><button type="button" title="Lets you record your first explanation before reading the AI Draft." aria-label="About Baseline First" className="text-slate-400 hover:text-violet-700"><Info className="h-3.5 w-3.5" /></button></div><p className="mt-1 text-sm text-slate-600">Record your explanation before reading the AI Draft.</p>{baselineFirst && <textarea rows={3} value={baselineExplanation} onChange={(event) => setBaselineExplanation(event.target.value)} className="input mt-3" placeholder="Write your 1–2 sentence explanation..." />}</div></div>
-        {error && <FieldError>{error}</FieldError>}
-        {submitAttempted && !canBuild && <FieldError>{baselineFirst && !baselineExplanation.trim() ? "Write your baseline explanation before building the AI draft." : "Choose or enter a lesson topic before building the AI draft."}</FieldError>}
-        <button type="button" disabled={isGenerating} onClick={() => { setSubmitAttempted(true); if (canBuild) onBuild({ subject, gradeLevel, topic, classDate, baselineFirst, baselineExplanation: baselineExplanation.trim(), careerStage }); }} className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-800 disabled:opacity-50">{isGenerating ? "Building AI Draft…" : "Build AI Draft"}</button>
-      </div>
-    </section>
-  );
+function defaultClassDate(): string {
+  return new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
 }
 
 export function LessonPrepStudio({
   language,
-  lowDataMode,
+  user,
   cases,
   activeCase,
   onSelectCase,
-  onCreateOrUpdateCase,
-  onUpdateActiveCase,
+  onGenerateConceptPack,
+  onPatchCase,
   onGoToRehearsal,
   onNotify,
-  teacherProfile,
 }: LessonPrepStudioProps) {
   const copy = UI_COPY[language];
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2>(activeCase ? 2 : 1);
   const [supportTab, setSupportTab] = useState<SupportTab>("bridge");
 
-  // Form state for Step 1
-  const [subject, setSubject] = useState<SubjectName>(activeCase.subject);
-  const [gradeLevel, setGradeLevel] = useState(activeCase.gradeLevel);
-  const [topic, setTopic] = useState(activeCase.topic);
-  const [customTopic, setCustomTopic] = useState("");
+  // Step 2 Intake state (starts blank by default)
+  const [subject, setSubject] = useState<SubjectName>("Science");
+  const [gradeLevel, setGradeLevel] = useState("Grade 7");
+  const [topic, setTopic] = useState("");
   const [useCustomTopic, setUseCustomTopic] = useState(false);
-  const [teacherMajor, setTeacherMajor] = useState(teacherProfile.teacherMajor);
-  const [classDate, setClassDate] = useState(activeCase.classDate);
-  const [startingMaterial, setStartingMaterial] = useState(activeCase.startingMaterial);
-  const [baselineFirst, setBaselineFirst] = useState(activeCase.baselineFirst);
-  const [uploadedPreview, setUploadedPreview] = useState<string | undefined>(
-    activeCase.uploadedImagePreview
-  );
+  const [customTopic, setCustomTopic] = useState("");
+  const teacherMajorInfo = (user.major || user.degree || "General Education").trim();
+  const [classDate, setClassDate] = useState(defaultClassDate());
+  const [careerStage, setCareerStage] = useState<CareerStage>("2");
+  const [startingMaterial, setStartingMaterial] = useState("");
+  const [usesLabEquipment, setUsesLabEquipment] = useState(false);
+  const [baselineFirst, setBaselineFirst] = useState(true);
+  const [baselineIntakeExplanation, setBaselineIntakeExplanation] = useState("");
+  const [uploadedPreview, setUploadedPreview] = useState<string | undefined>(undefined);
   const [uploadedBase64, setUploadedBase64] = useState<{
     mimeType: string;
     data: string;
   } | null>(null);
+  const [noStudentFacesConfirmed, setNoStudentFacesConfirmed] = useState(false);
 
+  const [matchedLac, setMatchedLac] = useState<PeerLibraryItem | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [demoMode, setDemoMode] = useState(false);
-  const [baselineDraft, setBaselineDraft] = useState(activeCase.baselineExplanation);
-  const [baselineSkipped, setBaselineSkipped] = useState(false);
 
+  // Step 3 interactive Concept Pack states
+  const [baselineDraft, setBaselineDraft] = useState("");
+  const [baselineSkipped, setBaselineSkipped] = useState(false);
+  const [selectedDiagnosticIdx, setSelectedDiagnosticIdx] = useState<number | null>(null);
+  const [selfCheckAnswers, setSelfCheckAnswers] = useState<Record<number, number>>({});
+
+  const effectiveTopic = useCustomTopic ? customTopic.trim() : topic.trim();
   const daysUntilClass = computeDaysUntil(classDate);
   const meetsThreeDayWindow = daysUntilClass >= 3;
+  const activeFramework = curriculumFrameworkForGrade(gradeLevel);
+
+  useEffect(() => {
+    setSelectedDiagnosticIdx(null);
+    setSelfCheckAnswers({});
+    setBaselineDraft("");
+    setBaselineSkipped(false);
+  }, [activeCase?.id]);
+
+  // Check Shared LAC Library match automatically whenever class is < 3 school days away
+  useEffect(() => {
+    if (daysUntilClass >= 3 || !effectiveTopic) {
+      setMatchedLac(null);
+      return;
+    }
+    const timer = window.setTimeout(async () => {
+      try {
+        const res = await bansayFetch(
+          `/api/bansay/lac-library/match?subject=${encodeURIComponent(
+            subject
+          )}&topic=${encodeURIComponent(effectiveTopic)}`
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as { match: PeerLibraryItem | null };
+        setMatchedLac(data.match);
+      } catch {
+        // ignore network lookup errors in low connectivity
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [daysUntilClass, subject, effectiveTopic]);
 
   const handleSubjectChange = (nextSubject: SubjectName) => {
     setSubject(nextSubject);
-    const firstPreset = DEPED_TOPIC_PRESETS[nextSubject][0];
-    if (firstPreset) {
-      setTopic(firstPreset.topic);
-      setGradeLevel(firstPreset.gradeLevel);
-      setUseCustomTopic(false);
+    if (!useCustomTopic) {
+      setTopic("");
     }
+  };
+
+  const handleGradeChange = (nextGrade: string) => {
+    setGradeLevel(nextGrade);
+    if (!useCustomTopic) {
+      setTopic("");
+    }
+  };
+
+  const resetIntakeToBlank = () => {
+    setTopic("");
+    setCustomTopic("");
+    setUseCustomTopic(false);
+    setStartingMaterial("");
+    setBaselineIntakeExplanation("");
+    setUploadedPreview(undefined);
+    setUploadedBase64(null);
+    setNoStudentFacesConfirmed(false);
+    setCareerStage("2");
+    setApiError(null);
+    setStep(1);
   };
 
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) {
-      setApiError("Please choose an image or note file under 5 MB.");
+      setApiError("Please choose a setup or handwritten note photo under 5 MB.");
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
       setUploadedPreview(result);
+      setNoStudentFacesConfirmed(false);
       const match = result.match(/^data:(.*?);base64,(.*)$/);
       if (match) {
         setUploadedBase64({ mimeType: match[1], data: match[2] });
@@ -191,15 +218,16 @@ export function LessonPrepStudio({
     reader.readAsDataURL(file);
   };
 
-  const handleBuildSupport = async (e?: FormEvent, draft?: IntakeDraft) => {
-    e?.preventDefault();
-    const chosenSubject = draft?.subject || subject;
-    const chosenGradeLevel = draft?.gradeLevel || gradeLevel;
-    const chosenTeacherMajor = teacherMajor;
-    const chosenClassDate = draft?.classDate ?? classDate;
-    const chosenTopic = draft?.topic.trim() || (useCustomTopic ? customTopic.trim() : topic.trim());
-    if (!chosenTopic) {
+  const handleBuildSupport = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!effectiveTopic) {
       setApiError("Please select or enter an upcoming DepEd lesson topic.");
+      return;
+    }
+    if (uploadedPreview && !noStudentFacesConfirmed) {
+      setApiError(
+        "Please confirm that your uploaded photo shows materials or notes only (no student faces)."
+      );
       return;
     }
 
@@ -207,238 +235,200 @@ export function LessonPrepStudio({
     setIsGenerating(true);
 
     try {
-      const response = await fetch("/api/bansay/generate-support", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          subject: chosenSubject,
-          gradeLevel: chosenGradeLevel,
-          topic: chosenTopic,
-          teacherMajor: chosenTeacherMajor,
-          language,
-          startingMaterial,
-          imageData: uploadedBase64 || undefined,
-        }),
-      });
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Unable to generate lesson support right now.");
-      }
-
-      setDemoMode(Boolean((data as { demo?: boolean }).demo));
-      const generated = data as GeneratedLessonSupport;
-      const created: LessonCase = {
-        id: `case-${Date.now()}`,
-        subject: chosenSubject,
-        gradeLevel: chosenGradeLevel,
-        topic: chosenTopic,
-        teacherName: teacherProfile.teacherName,
-        teacherMajor: chosenTeacherMajor,
-        classDate: chosenClassDate,
-        careerStage: draft?.careerStage,
-        submittedAt: new Date().toISOString().slice(0, 10),
-        language,
-        startingMaterial,
+      const result = await onGenerateConceptPack({
+        subject,
+        gradeLevel,
+        topic: effectiveTopic,
+        teacherMajor: teacherMajorInfo,
+        classDate,
+        careerStage,
+        startingMaterial: startingMaterial.trim(),
+        baselineFirst,
+        baselineExplanation: baselineIntakeExplanation.trim(),
+        usesLabEquipment,
+        imageData: uploadedBase64 || undefined,
         uploadedImagePreview: uploadedPreview,
-        baselineFirst: draft?.baselineFirst ?? baselineFirst,
-        baselineExplanation: draft?.baselineExplanation ?? "",
-        submissionFormat: lowDataMode ? "offline-fallback" : "live-ai",
-        support: generated,
-        rehearsalMessages: [
-          {
-            id: `msg-${Date.now()}`,
-            sender: "student",
-            text: generated.simulatedStudentPrompt.openingQuestion,
-            timestamp: new Date().toLocaleTimeString([], {
-              hour: "2-digit",
-              minute: "2-digit",
-            }),
-          },
-        ],
-        mentorReview: {
-          mentorName: "Mentor assignment pending",
-          mentorAffiliation: "Routed after rehearsal submission",
-          backupMentorName: "Elena Villanueva",
-          languagesCovered: ["en", "fil"],
-          reviewedAt: "Pending submission",
-          focusedGap: "",
-          teachingMove: "",
-          quickRefresher: "",
-          masteredSkill: "",
-          practiceSkill: "",
-          status: "pending",
-        },
-        teacherRevision: "",
-        freshCaseResponse: "",
-        freshCaseStatus: "locked",
-        cachedOffline: true,
-      };
-
-      onCreateOrUpdateCase(created);
-      setBaselineDraft("");
-      setBaselineSkipped(false);
+        noStudentFacesConfirmed,
+      });
+      setDemoMode(Boolean(result.demo));
       setSupportTab("bridge");
       setStep(2);
-      onNotify("Lesson support is ready to use");
+      onNotify("Your 10-Minute Concept Pack is ready.");
     } catch (err) {
-      const msg =
+      setApiError(
         err instanceof Error
           ? err.message
-          : "Network error generating lesson support.";
-      setApiError(msg);
+          : "Unable to generate 10-Minute Concept Pack right now."
+      );
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const handleSaveBaseline = () => {
-    if (!baselineDraft.trim()) return;
-    onUpdateActiveCase({
-      ...activeCase,
-      baselineExplanation: baselineDraft.trim(),
-    });
+  const handleSaveBaseline = async () => {
+    if (!activeCase || !baselineDraft.trim()) return;
+    await onPatchCase(activeCase.id, { baselineExplanation: baselineDraft.trim() });
+    setBaselineDraft("");
   };
 
-  const handleDownloadOfflineGuide = () => {
-    const { specialtyBridge, misconceptionAlerts, improvisedActivity, simulatedStudentPrompt } =
-      activeCase.support;
+  const handleSelectDiagnostic = async (idx: number) => {
+    setSelectedDiagnosticIdx(idx);
+    if (activeCase && !activeCase.diagnosticCompleted) {
+      await onPatchCase(activeCase.id, { diagnosticCompleted: true });
+    }
+  };
+
+  const handleSelectSelfCheck = async (itemIdx: number, optIdx: number) => {
+    if (!activeCase) return;
+    const nextAnswers = { ...selfCheckAnswers, [itemIdx]: optIdx };
+    setSelfCheckAnswers(nextAnswers);
+    const items = activeCase.support.quickSelfCheck || [];
+    if (Object.keys(nextAnswers).length === items.length && items.length > 0) {
+      const score = items.reduce(
+        (sum, item, idx) => sum + (nextAnswers[idx] === item.correctIndex ? 1 : 0),
+        0
+      );
+      await onPatchCase(activeCase.id, { selfCheckScore: score });
+    }
+  };
+
+  const handleDownloadOfflineGuide = async () => {
+    if (!activeCase) return;
+    const {
+      bigIdea,
+      specialtyBridge,
+      contrastiveExamples,
+      misconceptionDiagnostic,
+      misconceptionAlerts,
+      quickSelfCheck,
+      improvisedActivity,
+      simulatedStudentPrompt,
+    } = activeCase.support;
 
     const textContent = [
-      `BANSAY OFFLINE LESSON GUIDE`,
+      `BANSAY OFFLINE 10-MINUTE CONCEPT PACK`,
       `==========================================`,
+      `Status: ${activeCase.packStatus === "mentor-verified" ? "MENTOR-VERIFIED" : "AI DRAFT (UNVERIFIED)"}`,
       `Topic: ${activeCase.topic} (${activeCase.subject} · ${activeCase.gradeLevel})`,
-      `Teacher Major: ${activeCase.teacherMajor}`,
-      `Class Date: ${activeCase.classDate}`,
-      `Language: ${activeCase.language.toUpperCase()}`,
+      `Curriculum: ${bigIdea.curriculumGrounding}`,
+      `Bridge Lens: ${activeCase.teacherMajor} · Class Date: ${activeCase.classDate}`,
       ``,
-      `1. SPECIALTY BRIDGE: ${specialtyBridge.title}`,
+      `1. BIG IDEA SUMMARY`,
+      bigIdea.summary,
+      ``,
+      `2. SPECIALTY BRIDGE FOR YOU (via ${activeCase.teacherMajor}): ${specialtyBridge.title}`,
       specialtyBridge.explanation,
-      `Try saying: ${specialtyBridge.trySaying}`,
-      `Watch out (where analogy stops): ${specialtyBridge.limitationNote}`,
+      `For students (plain classroom explanation): ${specialtyBridge.trySaying}`,
+      `Where the ${activeCase.teacherMajor} model stops: ${specialtyBridge.limitationNote}`,
       ``,
-      `2. MISCONCEPTION ALERTS`,
-      ...misconceptionAlerts.flatMap((m, i) => [
-        `Alert ${i + 1}: ${m.question}`,
-        `What student imagines: ${m.whatStudentImagines}`,
-        `Teaching move: ${m.practicalResponse}`,
-        ``,
+      `3. CONTRASTIVE CAUSAL WORKED EXAMPLES`,
+      ...contrastiveExamples.flatMap((ex, i) => [
+        `Example ${i + 1}: ${ex.title}`,
+        `+ Positive: ${ex.positiveExample} | Why: ${ex.causalWhy}`,
+        `- Non-Example: ${ex.contrastiveNonExample} | Difference: ${ex.contrastWhyItDiffers}`,
       ]),
-      `3. IMPROVISED CLASSROOM ACTIVITY: ${improvisedActivity.title}`,
+      ``,
+      `4. MISCONCEPTION DIAGNOSTIC & ALERTS`,
+      `Diagnostic Prompt: ${misconceptionDiagnostic.prompt}`,
+      `Mental Model: ${misconceptionDiagnostic.studentMentalModel}`,
+      `Refutation: ${misconceptionDiagnostic.refutation}`,
+      ...misconceptionAlerts.map(
+        (m, i) => `Q${i + 1}: ${m.question} -> Move: ${m.practicalResponse}`
+      ),
+      ``,
+      `5. QUICK SELF-CHECK (3 ITEMS)`,
+      ...quickSelfCheck.map(
+        (q) => `${q.question} (Answer: ${q.options[q.correctIndex]}) — ${q.feedback}`
+      ),
+      ``,
+      `6. IMPROVISED ACTIVITY: ${improvisedActivity.title}`,
       `Materials: ${improvisedActivity.materials.join(", ")}`,
-      ...improvisedActivity.steps.map((s, idx) => `Step ${idx + 1}: ${s}`),
+      ...improvisedActivity.steps.map((s, i) => `Step ${i + 1}: ${s}`),
+      `Safety Protocol: ${improvisedActivity.safetyProtocol}`,
       `Key Takeaway: ${improvisedActivity.keyTakeaway}`,
       ``,
-      `4. OFFLINE REHEARSAL PROMPT (For weak connectivity)`,
-      `Student (${simulatedStudentPrompt.studentName}) asks: ${simulatedStudentPrompt.openingQuestion}`,
-      `Write your explanation on paper or voice note, then upload when connected.`,
+      `7. OFFLINE REHEARSAL PROMPT`,
+      `Student (${simulatedStudentPrompt.studentName}): ${simulatedStudentPrompt.openingQuestion}`,
     ].join("\n");
 
     const blob = new Blob([textContent], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `bansay-guide-${activeCase.subject.toLowerCase()}-${activeCase.gradeLevel.replace(/\s+/g, "").toLowerCase()}.txt`;
+    a.download = `bansay-concept-pack-${activeCase.subject.toLowerCase()}-${activeCase.gradeLevel
+      .replace(/\s+/g, "")
+      .toLowerCase()}.txt`;
     a.click();
     URL.revokeObjectURL(url);
 
-    onUpdateActiveCase({
-      ...activeCase,
-      cachedOffline: true,
-    });
+    await onPatchCase(activeCase.id, { cachedOffline: true });
+    onNotify("Offline Concept Pack downloaded for low-connectivity study.");
   };
 
-  const needsBaselineGate =
-    activeCase.baselineFirst &&
-    !activeCase.baselineExplanation.trim() &&
-    !baselineSkipped;
+  const needsBaselineGate = Boolean(
+    activeCase &&
+      activeCase.baselineFirst &&
+      !activeCase.baselineExplanation.trim() &&
+      !baselineSkipped
+  );
 
-  if (step === 1) {
-    return (
-      <WorkspaceLessonIntake
-        language={language}
-        isGenerating={isGenerating}
-        error={apiError}
-        onBuild={(draft) => void handleBuildSupport(undefined, draft)}
-      />
-    );
-  }
+  const presetOptions = DEPED_TOPIC_PRESETS[subject].filter(
+    (preset) => preset.gradeLevel === gradeLevel
+  );
 
   return (
     <div className="space-y-6">
-      {/* Compact workflow and current lesson context */}
-      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 sm:px-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2" aria-label="Lesson workflow">
-          <span className="hidden text-xs font-medium text-slate-500 sm:inline">Lesson workflow</span>
-          <div className="inline-flex items-center gap-1 rounded-lg bg-slate-100 p-1">
-          <button
-            type="button"
-            onClick={() => setStep(1)}
-            className={`px-3.5 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-violet-600 ${
-              (step as 1 | 2) === 1
-                ? "bg-white text-violet-950 shadow-xs font-semibold"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <span className="mr-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-current/10 text-[10px]">1</span> Intake
-          </button>
-          <button
-            type="button"
-            onClick={() => setStep(2)}
-            className={`px-3.5 py-2 rounded-lg text-xs font-medium transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-violet-600 ${
-              step === 2
-                ? "bg-white text-violet-950 shadow-xs font-semibold"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            <span className="mr-1 inline-flex h-4 w-4 items-center justify-center rounded-full bg-current/10 text-[10px]">2</span> Support
-          </button>
+      {step === 1 || !activeCase ? (
+        <section className="w-full bg-white border border-slate-200 rounded-2xl p-5 sm:p-8">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-violet-700 mb-1">
+                {copy.step1Kicker}
+              </p>
+              <h1 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight text-balance">
+                {copy.step1Title}
+              </h1>
+            </div>
+            {activeCase && (
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 whitespace-nowrap shrink-0"
+              >
+                <span>Back to Concept Pack</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <CustomSelect
-            value={activeCase.id}
-            onChange={(caseId) => {
-              onSelectCase(caseId);
-              setBaselineDraft("");
-              setBaselineSkipped(false);
-              setDemoMode(false);
-            }}
-            options={cases.map((c) => ({ value: c.id, label: `${c.subject} (${c.gradeLevel}) — ${c.topic.slice(0, 42)}` }))}
-            className="w-full sm:w-80 text-xs font-medium"
-            ariaLabel="Active lesson"
-          />
-        </div></div>
-      </div>
-
-      {(step as 1 | 2) === 1 ? (
-        <section className="w-full bg-white border border-slate-200 rounded-2xl p-4 sm:p-8">
-          <p className="text-xs font-medium text-violet-700 mb-1">
-            {copy.step1Kicker}
-          </p>
-          <h1 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight text-balance">
-            {copy.step1Title}
-          </h1>
           <p className="text-sm text-slate-600 mt-1.5 max-w-2xl">
-            Enter your upcoming DepEd topic and your actual college degree. BANSAY builds a bridge from what you already know, plus common learner misconceptions and an improvised classroom activity.
+            Prepare a focused 10-minute guide grounded in {activeFramework} and explained through concepts from your background.
           </p>
+
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+            <span>
+              Specialty bridge lens (from profile):{" "}
+              <strong className="font-semibold text-slate-900">{teacherMajorInfo}</strong>
+            </span>
+            <span aria-hidden="true">·</span>
+            <span>
+              Curriculum: <strong className="font-semibold text-slate-900">{activeFramework}</strong>
+            </span>
+          </div>
 
           <form onSubmit={handleBuildSupport} className="mt-6 space-y-5">
-            {/* Subject & Grade */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Subject + Class Date */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                <span className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Assigned subject
-                </label>
+                </span>
                 <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-lg">
                   {(["Science", "Mathematics", "English"] as SubjectName[]).map((subj) => (
                     <button
                       key={subj}
                       type="button"
                       onClick={() => handleSubjectChange(subj)}
-                      className={`px-2 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                      className={`px-2 py-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
                         subject === subj
                           ? "bg-white text-violet-900 shadow-xs font-semibold"
                           : "text-slate-600 hover:text-slate-900"
@@ -451,148 +441,249 @@ export function LessonPrepStudio({
               </div>
 
               <div>
-                <label
-                  htmlFor="major-select"
-                  className="block text-xs font-semibold text-slate-700 mb-1.5"
-                >
-                  Your college major
-                </label>
-                <CustomSelect value={teacherMajor} onChange={setTeacherMajor} options={TEACHER_MAJORS.map((major) => ({ value: major, label: major }))} ariaLabel="Your college major" />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="class-date"
-                  className="block text-xs font-semibold text-slate-700 mb-1.5"
-                >
+                <span className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Class date
-                </label>
-                <DatePicker value={classDate} onChange={setClassDate} locale={language} label="Class date" />
+                </span>
+                <DatePicker
+                  value={classDate}
+                  onChange={setClassDate}
+                  locale={language}
+                  label="Class date"
+                />
               </div>
             </div>
 
-            {/* Turnaround Notice */}
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 flex items-start gap-3">
+            {/* Grade & Curriculum beside Grade-Filtered DepEd Topic */}
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+              <div className="md:col-span-4">
+                <span className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Grade &amp; curriculum
+                </span>
+                <CustomSelect
+                  value={gradeLevel}
+                  onChange={handleGradeChange}
+                  options={[
+                    "Grade 7",
+                    "Grade 8",
+                    "Grade 9",
+                    "Grade 10",
+                    "Grade 11",
+                    "Grade 12",
+                  ].map((g) => ({
+                    value: g,
+                    label: `${g} · ${curriculumFrameworkForGrade(g)}`,
+                  }))}
+                  ariaLabel="Grade level and curriculum"
+                />
+              </div>
+
+              <div className="md:col-span-8">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label
+                    htmlFor="topic-input"
+                    className="text-xs font-semibold text-slate-700"
+                  >
+                    Lesson topic or competency ({gradeLevel} · {activeFramework})
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setUseCustomTopic(!useCustomTopic)}
+                    className="text-xs font-semibold text-violet-700 hover:underline"
+                  >
+                    {useCustomTopic ? `Choose ${gradeLevel} preset` : "Type custom topic"}
+                  </button>
+                </div>
+
+                {useCustomTopic ? (
+                  <input
+                    id="topic-input"
+                    type="text"
+                    value={customTopic}
+                    onChange={(e) => setCustomTopic(e.target.value)}
+                    placeholder={`Enter a ${gradeLevel} ${subject} topic or competency...`}
+                    className="w-full text-sm bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900"
+                  />
+                ) : (
+                  <CustomSelect
+                    value={topic}
+                    onChange={setTopic}
+                    placeholder={`Select a ${gradeLevel} ${subject} topic...`}
+                    options={presetOptions.map((preset) => ({
+                      value: preset.topic,
+                      label: preset.topic,
+                    }))}
+                    ariaLabel="DepEd topic"
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Deadline-Aware Lead Time Banner + Matched Shared LAC Library Check */}
+            <div
+              className={`rounded-xl border px-4 py-3 flex items-start gap-3 ${
+                meetsThreeDayWindow
+                  ? "border-emerald-200 bg-emerald-50/70"
+                  : "border-amber-200 bg-amber-50/80"
+              }`}
+            >
               {meetsThreeDayWindow ? (
                 <CheckCircle2 className="w-4 h-4 text-emerald-700 mt-0.5 shrink-0" />
               ) : (
                 <AlertTriangle className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
               )}
-              <div className="text-xs text-slate-700 leading-relaxed">
+              <div className="text-xs text-slate-700 leading-relaxed space-y-1.5">
                 {meetsThreeDayWindow ? (
-                  <span>
-                    <strong className="text-slate-900">Within target mentor window:</strong> Class is{" "}
-                    <span className="tabular-nums font-medium">{daysUntilClass} days</span> away. Submitting a rehearsal today qualifies for a specialist mentor reply within two school days before class.
-                  </span>
+                  <p>
+                    <strong className="text-slate-900">
+                      Mentor review available before class:
+                    </strong>{" "}
+                    Your class is <span className="tabular-nums font-semibold">{daysUntilClass} days</span>{" "}
+                    away. After practicing, you can send your explanation to a mentor for feedback before class.
+                  </p>
                 ) : (
-                  <span>
-                    <strong className="text-slate-900">Class is soon ({daysUntilClass <= 0 ? "today/past" : `${daysUntilClass} day(s)`}):</strong> You receive immediate specialty bridges, misconception alerts, and improvised lab guides right away. Human mentor review is targeted for requests submitted at least 3 school days ahead.
-                  </span>
+                  <p>
+                    <strong className="text-amber-950">
+                      Class is under 3 days away ({daysUntilClass <= 0 ? "today" : `${daysUntilClass} day(s)`}):
+                    </strong>{" "}
+                    Your Concept Pack and practice rehearsal are ready right away, and mentor feedback may arrive after class.
+                  </p>
+                )}
+                {!meetsThreeDayWindow && matchedLac && (
+                  <div className="rounded-lg border border-violet-200 bg-white px-3 py-2 text-xs text-slate-700">
+                    <strong className="text-violet-800">
+                      Verified peer lesson found:
+                    </strong>{" "}
+                    {matchedLac.title} ({matchedLac.saveCount} saves).
+                  </div>
                 )}
               </div>
             </div>
 
-            {/* DepEd Topic */}
-            <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <label
-                  htmlFor="topic-select"
-                  className="text-xs font-semibold text-slate-700"
-                >
-                  DepEd topic or learning competency
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setUseCustomTopic(!useCustomTopic)}
-                  className="text-xs font-medium text-violet-700 hover:underline"
-                >
-                  {useCustomTopic ? "Choose from DepEd presets" : "Type a custom topic"}
-                </button>
+            {/* Lesson Proficiency Self-Calibration + Classroom Materials */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-slate-200 p-4 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-slate-800">
+                    Lesson Proficiency Self-Calibration
+                  </span>
+                  <span className="text-xs font-mono text-violet-700">Level {careerStage}</span>
+                </div>
+                <div className="relative grid grid-cols-4 rounded-xl bg-slate-100 p-1">
+                  <span
+                    className="absolute inset-y-1 rounded-lg bg-violet-700 shadow-sm transition-transform duration-200"
+                    style={{
+                      width: "calc(25% - 0.25rem)",
+                      transform: `translateX(${(Number(careerStage) - 1) * 100}%)`,
+                    }}
+                  />
+                  {(["1", "2", "3", "4"] as CareerStage[]).map((stage) => (
+                    <button
+                      type="button"
+                      key={stage}
+                      onClick={() => setCareerStage(stage)}
+                      className={`relative z-10 rounded-lg py-1.5 text-xs font-semibold ${
+                        careerStage === stage ? "text-white" : "text-slate-600"
+                      }`}
+                    >
+                      {stage}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-slate-600">
+                  <strong>{CAREER_STAGE_LABELS[careerStage].name}:</strong>{" "}
+                  {CAREER_STAGE_LABELS[careerStage].focus}
+                </p>
               </div>
 
-              {useCustomTopic ? (
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  <CustomSelect value={gradeLevel} onChange={setGradeLevel} options={["Grade 7", "Grade 8", "Grade 9", "Grade 10"].map((item) => ({ value: item, label: item }))} ariaLabel="Grade level" />
-                  <input
-                    type="text"
-                    value={customTopic}
-                    onChange={(e) => setCustomTopic(e.target.value)}
-                    placeholder="e.g., Mixtures and pure substances — explaining why salt stays dissolved"
-                    className="sm:col-span-3 text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600"
-                  />
+              <div className="rounded-xl border border-slate-200 p-4 flex flex-col justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-slate-800">
+                    Classroom materials
+                  </p>
+                  <p className="text-xs text-slate-600 mt-1">
+                    Activities use everyday household items unless school lab equipment is checked below.
+                  </p>
                 </div>
-              ) : (
-                <CustomSelect
-                  value={topic}
-                  onChange={(nextTopic) => {
-                    const selected = DEPED_TOPIC_PRESETS[subject].find(
-                      (p) => p.topic === nextTopic
-                    );
-                    setTopic(nextTopic);
-                    if (selected) setGradeLevel(selected.gradeLevel);
-                  }}
-                  options={DEPED_TOPIC_PRESETS[subject].map((preset) => ({ value: preset.topic, label: `${preset.gradeLevel} — ${preset.topic}` }))}
-                  ariaLabel="DepEd topic or learning competency"
-                />
-              )}
+                <label className="flex items-center gap-2 text-xs font-medium text-slate-800">
+                  <Checkbox
+                    checked={usesLabEquipment}
+                    onChange={(e) => setUsesLabEquipment(e.target.checked)}
+                  />
+                  <span>School science laboratory equipment is available</span>
+                </label>
+              </div>
             </div>
 
-            {/* Starting Material + Photo Upload */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Starting Material + Optional Photo */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label
                   htmlFor="starting-material"
                   className="block text-xs font-semibold text-slate-700 mb-1.5"
                 >
-                  Starting material or notes <span className="font-normal text-slate-400">· Optional</span>
+                  Starting material or notes{" "}
+                  <span className="font-normal text-slate-400">· Optional</span>
                 </label>
                 <textarea
                   id="starting-material"
                   rows={3}
                   value={startingMaterial}
                   onChange={(e) => setStartingMaterial(e.target.value)}
-                  placeholder="Paste a module paragraph, sample question, or list of materials available in your classroom..."
-                  className="w-full text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600"
+                  placeholder="Paste a module paragraph, learner question, or classroom materials on hand..."
+                  className="w-full text-sm bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
                 />
               </div>
 
-              <div>
-                <span className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Photo of handwritten work or planned setup <span className="font-normal text-slate-400">· Up to 5 MB</span>
+              <div className="space-y-2">
+                <span className="block text-xs font-semibold text-slate-700">
+                  Note or setup photo{" "}
+                  <span className="font-normal text-slate-400">· Optional</span>
                 </span>
                 {uploadedPreview ? (
-                  <div className="border border-slate-200 rounded-xl p-2.5 flex items-center justify-between gap-3 bg-slate-50">
-                    <img
-                      src={uploadedPreview}
-                      alt="Uploaded teacher setup or notes"
-                      referrerPolicy="no-referrer"
-                      className="w-16 h-16 rounded-lg object-cover border border-slate-200"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-slate-800 truncate">
-                        Classroom setup attached
-                      </p>
-                      <p className="text-[11px] text-slate-500">
-                        Included in support generation and mentor review
-                      </p>
+                  <div className="border border-slate-200 rounded-xl p-3 space-y-2.5 bg-slate-50">
+                    <div className="flex items-center justify-between gap-3">
+                      <img
+                        src={uploadedPreview}
+                        alt="Uploaded classroom setup preview"
+                        referrerPolicy="no-referrer"
+                        className="w-14 h-14 rounded-lg object-cover border border-slate-200"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-slate-800 truncate">
+                          Photo attached
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          Private to your workspace
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setUploadedPreview(undefined);
+                          setUploadedBase64(null);
+                          setNoStudentFacesConfirmed(false);
+                        }}
+                        className="p-2 text-slate-500 hover:text-rose-700 rounded-lg"
+                        aria-label="Remove attachment"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUploadedPreview(undefined);
-                        setUploadedBase64(null);
-                      }}
-                      className="p-2 text-slate-500 hover:text-rose-700 rounded-lg"
-                      aria-label="Remove attachment"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <label className="flex items-start gap-2 text-xs text-slate-800">
+                      <Checkbox
+                        checked={noStudentFacesConfirmed}
+                        onChange={(e) => setNoStudentFacesConfirmed(e.target.checked)}
+                      />
+                      <span>
+                        Confirm photo shows materials or notes only (no student faces).
+                      </span>
+                    </label>
                   </div>
                 ) : (
                   <label className="flex flex-col items-center justify-center h-[88px] border border-dashed border-slate-300 rounded-xl bg-slate-50/70 hover:bg-violet-50/40 hover:border-violet-300 cursor-pointer transition-colors px-4 text-center">
                     <ImagePlus className="w-4 h-4 text-slate-500 mb-1" />
                     <span className="text-xs font-medium text-slate-700">
-                      Add a photo or handwritten note
+                      Add handwritten note or setup photo
                     </span>
                     <input
                       type="file"
@@ -605,54 +696,48 @@ export function LessonPrepStudio({
               </div>
             </div>
 
-            {/* Baseline First Toggle */}
-            <div className="flex items-center justify-between gap-4 border border-slate-200 rounded-xl px-4 py-3 bg-violet-50/40">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Baseline first</p>
-                <p className="text-xs text-slate-600">
-                  Answer once in your own words before opening model examples so mentors can see your independent reasoning.
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={baselineFirst}
-                onClick={() => setBaselineFirst(!baselineFirst)}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-2 focus-visible:outline-violet-600 ${
-                  baselineFirst ? "bg-violet-700" : "bg-slate-300"
-                }`}
-              >
-                <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${
-                    baselineFirst ? "translate-x-5" : "translate-x-0"
-                  }`}
+            {/* Starting Explanation */}
+            <div className="rounded-xl border border-violet-100 bg-violet-50/50 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Jot down your starting explanation</p>
+                  <p className="text-xs text-slate-600">
+                    Write 1–2 sentences first so you can compare your thinking with the Concept Pack.
+                  </p>
+                </div>
+                <Checkbox
+                  checked={baselineFirst}
+                  onChange={(e) => setBaselineFirst(e.target.checked)}
+                  aria-label="Prompt for starting explanation first"
                 />
-              </button>
+              </div>
+              {baselineFirst && (
+                <textarea
+                  rows={2}
+                  value={baselineIntakeExplanation}
+                  onChange={(e) => setBaselineIntakeExplanation(e.target.value)}
+                  placeholder="Optional now (or write it right before opening the Concept Pack)..."
+                  className="w-full text-sm bg-white border border-slate-300 rounded-xl px-3.5 py-2 text-slate-900"
+                />
+              )}
             </div>
 
-            {apiError && (
-              <div
-                role="alert"
-                className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs text-rose-800"
-              >
-                {apiError}
-              </div>
-            )}
+            {apiError && <FieldError>{apiError}</FieldError>}
 
             <div className="flex flex-wrap items-center justify-between gap-4 pt-2">
               <p className="text-xs text-slate-500 flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5" />
-                <span>Your starting answer stays private to you and your assigned mentor.</span>
+                <Lock className="w-3.5 h-3.5 shrink-0" />
+                <span>Private to you and your assigned mentor.</span>
               </p>
               <button
                 type="submit"
                 disabled={isGenerating}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-700 hover:bg-violet-800 disabled:opacity-60 text-white text-sm font-semibold transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-violet-600"
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-700 hover:bg-violet-800 disabled:opacity-60 text-white text-sm font-semibold transition-colors whitespace-nowrap shrink-0"
               >
                 {isGenerating ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Building guide...</span>
+                    <span>Building your Concept Pack…</span>
                   </>
                 ) : (
                   <>
@@ -665,75 +750,128 @@ export function LessonPrepStudio({
           </form>
         </section>
       ) : (
-        /* STEP 2: Ready-to-use Support (Figure 4) */
+        /* Step 3: 6-Part 10-Minute Concept Pack */
         <section className="space-y-5">
-          {/* Header Row */}
           <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-7">
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div>
-                <div className="flex flex-wrap items-center gap-1.5 text-xs text-slate-600 mb-2">
-                  <span className="rounded-full bg-violet-50 px-2 py-0.5 font-semibold text-violet-700">{activeCase.subject}</span>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5">{activeCase.gradeLevel}</span>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5">{activeCase.teacherMajor}</span>
-                </div>
-                <h1 className="font-display text-xl sm:text-2xl font-bold text-slate-900 tracking-tight text-balance">{activeCase.topic}</h1>
-                <p className="text-sm text-slate-600 mt-1">{copy.step2Title}</p>
-                <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
-                  <strong>AI Draft (Unverified)</strong> · Use this for private study and rehearsal. Cross-check safety steps and formulas before live classroom use.
-                </div>
-                {demoMode && (
-                  <p className="mt-2 inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 ring-1 ring-amber-200">
-                    Demo mode · Sample coaching guidance is active until an OpenRouter key is configured.
-                  </p>
-                )}
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-slate-500">
+                  <span className="font-semibold text-violet-700">{activeCase.subject}</span>
+                  {" · "}
+                  <span>{activeCase.gradeLevel}</span>
+                  {" · "}
+                  <span>{activeCase.support.bigIdea.curriculumGrounding}</span>
+                  {" · "}
+                  <span>Bridge lens: {activeCase.teacherMajor}</span>
+                  {" · "}
+                  <span>Lesson proficiency: Level {activeCase.careerStage}</span>
+                </p>
+                <h1 className="font-display text-xl sm:text-2xl font-bold text-slate-900 tracking-tight text-balance">
+                  {activeCase.topic}
+                </h1>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
+              <div className="flex flex-wrap items-center gap-2 shrink-0">
+                {cases.length > 1 && (
+                  <div className="w-56">
+                    <CustomSelect
+                      value={activeCase.id}
+                      onChange={(caseId) => {
+                        onSelectCase(caseId);
+                        setDemoMode(false);
+                      }}
+                      options={cases.map((c) => ({
+                        value: c.id,
+                        label: `${c.subject} (${c.gradeLevel}) — ${c.topic.slice(0, 32)}`,
+                      }))}
+                      className="text-xs font-medium"
+                      ariaLabel="Switch saved lesson"
+                    />
+                  </div>
+                )}
                 <button
                   type="button"
-                  onClick={handleDownloadOfflineGuide}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 whitespace-nowrap focus-visible:outline-2 focus-visible:outline-violet-600"
+                  onClick={() => void handleDownloadOfflineGuide()}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 whitespace-nowrap"
                 >
                   {activeCase.cachedOffline ? (
                     <BookmarkCheck className="w-3.5 h-3.5 text-emerald-700" />
                   ) : (
                     <Download className="w-3.5 h-3.5" />
                   )}
-                  <span>Download offline guide</span>
+                  <span>Download offline pack</span>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setStep(1)}
+                  onClick={resetIntakeToBlank}
                   className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 whitespace-nowrap"
                 >
-                  Edit intake
+                  New lesson
                 </button>
               </div>
             </div>
 
-            {/* Segmented Support Tabs */}
-            <div className="mt-6"><Tabs value={supportTab} onChange={setSupportTab} label="Lesson support sections" items={[{ value: "bridge", label: "Specialty bridge" }, { value: "misconceptions", label: `Misconceptions (${activeCase.support.misconceptionAlerts.length})` }, { value: "activity", label: "Activity" }]} /></div>
+            {/* Persistent AI Draft / Mentor-Verified Epistemic Guardrail Banner */}
+            {activeCase.packStatus === "mentor-verified" ? (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-950 flex items-start gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-700 mt-0.5 shrink-0" />
+                <div>
+                  <strong>Mentor-Verified Concept Pack</strong> · Reviewed by{" "}
+                  {activeCase.mentorReview.mentorName} for classroom use and portfolio export.
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-950 space-y-1">
+                <p>
+                  <strong>Private Draft</strong> · For your personal prep and practice. Double-check against your DepEd Teacher&apos;s Guide and safety rules before teaching.
+                </p>
+                {demoMode && (
+                  <p className="text-amber-900">
+                    Local sample mode active (no live AI key configured).
+                  </p>
+                )}
+              </div>
+            )}
 
-            {/* Baseline-first gate */}
+            {/* 6-Part + Judge Segmented Tabs */}
+            <div className="mt-6">
+              <Tabs
+                value={supportTab}
+                onChange={setSupportTab}
+                label="10-Minute Concept Pack sections"
+                items={[
+                  { value: "bridge", label: "1–2 · Big Idea & Bridge" },
+                  { value: "examples", label: "3 · Worked Examples" },
+                  { value: "diagnostic", label: "4 · Misconceptions" },
+                  { value: "selfcheck", label: "5 · Quick Self-Check" },
+                  { value: "activity", label: "6 · Class Activity" },
+                  {
+                    value: "judge",
+                    label: `Quality Check (${activeCase.support.judgeReport.passed ? "Ready" : "Review"})`,
+                  },
+                ]}
+              />
+            </div>
+
             {needsBaselineGate ? (
               <div className="mt-6 border border-violet-200 bg-violet-50/50 rounded-2xl p-6 space-y-4">
                 <div>
                   <p className="text-xs font-semibold text-violet-800 mb-1">
-                    Baseline first · Independent thinking check
+                    Quick starting check
                   </p>
                   <h2 className="font-display text-lg font-bold text-slate-900">
-                    How would you explain "{activeCase.topic}" in 1–2 sentences right now?
+                    How would you explain &ldquo;{activeCase.topic}&rdquo; in 1–2 sentences right now?
                   </h2>
                   <p className="text-xs text-slate-600 mt-1">
-                    Writing your starting answer before viewing model examples lets your mentor coach your actual reasoning.
+                    Jotting down your own explanation first helps you see what changes after reading the guide.
                   </p>
                 </div>
                 <textarea
                   rows={3}
                   value={baselineDraft}
                   onChange={(e) => setBaselineDraft(e.target.value)}
-                  placeholder="Write your quick initial explanation as you would tell your class..."
-                  className="w-full text-sm bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900 focus-visible:outline-2 focus-visible:outline-violet-600"
+                  placeholder="Write your quick intuitive explanation as you would tell your students..."
+                  className="w-full text-sm bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900"
                 />
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <button
@@ -741,15 +879,15 @@ export function LessonPrepStudio({
                     onClick={() => setBaselineSkipped(true)}
                     className="text-xs font-medium text-slate-500 hover:text-slate-800"
                   >
-                    View guide first anyway
+                    Reveal Concept Pack anyway
                   </button>
                   <button
                     type="button"
-                    onClick={handleSaveBaseline}
+                    onClick={() => void handleSaveBaseline()}
                     disabled={!baselineDraft.trim()}
                     className="px-4 py-2 rounded-xl bg-violet-700 hover:bg-violet-800 disabled:opacity-50 text-white text-xs font-semibold whitespace-nowrap"
                   >
-                    Save baseline &amp; reveal support
+                    Save baseline &amp; open Concept Pack
                   </button>
                 </div>
               </div>
@@ -757,15 +895,24 @@ export function LessonPrepStudio({
               <div className="mt-6">
                 {supportTab === "bridge" && (
                   <div className="space-y-5">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 sm:p-5 space-y-1.5">
+                      <p className="text-xs font-semibold text-violet-800">
+                        Part 1 · Core Big Idea ({activeCase.support.bigIdea.curriculumGrounding})
+                      </p>
+                      <p className="text-sm sm:text-base text-slate-900 leading-relaxed font-medium">
+                        {activeCase.support.bigIdea.summary}
+                      </p>
+                    </div>
+
                     <div className="flex items-start gap-4">
                       <div className="w-10 h-10 rounded-xl bg-violet-700 text-white flex items-center justify-center shrink-0">
                         <Lightbulb className="w-5 h-5" />
                       </div>
                       <div className="space-y-2">
                         <p className="text-xs font-semibold text-violet-700">
-                          {activeCase.teacherMajor} · Subject bridge
+                          Part 2 · Teacher Understanding via {activeCase.teacherMajor}
                         </p>
-                        <h2 className="font-display text-xl sm:text-2xl font-bold text-slate-900">
+                        <h2 className="font-display text-xl font-bold text-slate-900">
                           {activeCase.support.specialtyBridge.title}
                         </h2>
                         <p className="text-sm sm:text-base text-slate-700 leading-relaxed max-w-3xl">
@@ -774,9 +921,9 @@ export function LessonPrepStudio({
                       </div>
                     </div>
 
-                    <div className="rounded-xl bg-violet-50 border border-violet-100 p-4 sm:p-5">
-                      <p className="text-xs font-semibold text-violet-800 mb-1.5">
-                        Try saying this in class
+                    <div className="rounded-xl bg-violet-50 border border-violet-100 p-4 sm:p-5 space-y-1.5">
+                      <p className="text-xs font-semibold text-violet-800">
+                        How to explain it to students · Plain classroom language (no {activeCase.teacherMajor} jargon)
                       </p>
                       <p className="text-sm sm:text-base font-medium text-slate-900 italic leading-relaxed">
                         {activeCase.support.specialtyBridge.trySaying}
@@ -784,39 +931,184 @@ export function LessonPrepStudio({
                     </div>
 
                     <div className="rounded-xl bg-slate-50 border border-slate-200 p-4">
-                      <p className="text-xs font-semibold text-slate-700 mb-1">
-                        Where the analogy stops (for scientific accuracy)
+                      <p className="text-xs font-semibold text-slate-800 mb-1">
+                        Where your {activeCase.teacherMajor} model stops
                       </p>
-                      <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                      <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
                         {activeCase.support.specialtyBridge.limitationNote}
                       </p>
                     </div>
                   </div>
                 )}
 
-                {supportTab === "misconceptions" && (
+                {supportTab === "examples" && (
                   <div className="space-y-4">
-                    {activeCase.support.misconceptionAlerts.map((alert, idx) => (
+                    <p className="text-xs font-semibold text-violet-700">
+                      Part 3 · Worked Examples &amp; Non-Examples
+                    </p>
+                    {activeCase.support.contrastiveExamples.map((ex, idx) => (
                       <div
                         key={idx}
-                        className="rounded-xl border border-slate-200 p-5 space-y-2.5 bg-white"
+                        className="rounded-xl border border-slate-200 bg-white p-5 space-y-3"
                       >
-                        <p className="text-xs font-semibold text-amber-800">
-                          Likely learner question {idx + 1}
-                        </p>
                         <h3 className="font-display text-base font-bold text-slate-900">
-                          {alert.question}
+                          {ex.title}
                         </h3>
-                        <p className="text-xs text-slate-600">
-                          <strong className="text-slate-800">What the learner imagines:</strong>{" "}
-                          {alert.whatStudentImagines}
-                        </p>
-                        <p className="text-sm text-slate-800 bg-slate-50 rounded-lg p-3 border border-slate-200/80">
-                          <strong className="text-violet-800">Teaching move:</strong>{" "}
-                          {alert.practicalResponse}
-                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 p-3.5 space-y-1.5">
+                            <p className="text-xs font-semibold text-emerald-900">
+                              Positive Example
+                            </p>
+                            <p className="text-sm text-slate-900">{ex.positiveExample}</p>
+                            <p className="text-xs text-slate-700">
+                              <strong>Causal Why:</strong> {ex.causalWhy}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-amber-200 bg-amber-50/50 p-3.5 space-y-1.5">
+                            <p className="text-xs font-semibold text-amber-900">
+                              Contrastive Non-Example
+                            </p>
+                            <p className="text-sm text-slate-900">
+                              {ex.contrastiveNonExample}
+                            </p>
+                            <p className="text-xs text-slate-700">
+                              <strong>Why it differs:</strong> {ex.contrastWhyItDiffers}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     ))}
+                  </div>
+                )}
+
+                {supportTab === "diagnostic" && (
+                  <div className="space-y-5">
+                    <div className="rounded-xl border border-violet-200 bg-violet-50/40 p-5 space-y-3">
+                      <p className="text-xs font-semibold text-violet-800">
+                        Part 4 · Common Student Misconception
+                      </p>
+                      <h3 className="font-display text-base font-bold text-slate-900">
+                        {activeCase.support.misconceptionDiagnostic.prompt}
+                      </h3>
+                      <div className="space-y-2">
+                        {activeCase.support.misconceptionDiagnostic.options.map((opt, idx) => {
+                          const picked = selectedDiagnosticIdx === idx;
+                          const isDiagnosisTarget =
+                            idx ===
+                            activeCase.support.misconceptionDiagnostic.flawedOptionIndex;
+                          return (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => void handleSelectDiagnostic(idx)}
+                              className={`w-full text-left rounded-xl border px-3.5 py-2.5 text-sm transition-colors ${
+                                picked
+                                  ? isDiagnosisTarget
+                                    ? "border-emerald-500 bg-emerald-50 text-emerald-950 font-medium"
+                                    : "border-amber-400 bg-amber-50 text-amber-950"
+                                  : "border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
+                              }`}
+                            >
+                              {opt}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {(selectedDiagnosticIdx !== null ||
+                        activeCase.diagnosticCompleted) && (
+                        <div className="rounded-lg bg-white border border-slate-200 p-3.5 space-y-1.5 text-xs text-slate-700">
+                          <p>
+                            <strong className="text-slate-900">Student mental model:</strong>{" "}
+                            {activeCase.support.misconceptionDiagnostic.studentMentalModel}
+                          </p>
+                          <p>
+                            <strong className="text-violet-800">Classroom refutation:</strong>{" "}
+                            {activeCase.support.misconceptionDiagnostic.refutation}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-3">
+                      <p className="text-xs font-semibold text-slate-700">
+                        Likely Learner Follow-Up Questions
+                      </p>
+                      {activeCase.support.misconceptionAlerts.map((alert, idx) => (
+                        <div
+                          key={idx}
+                          className="rounded-xl border border-slate-200 p-4 space-y-2 bg-white"
+                        >
+                          <h3 className="font-display text-sm font-bold text-slate-900">
+                            {alert.question}
+                          </h3>
+                          <p className="text-xs text-slate-600">
+                            <strong className="text-slate-800">What learner imagines:</strong>{" "}
+                            {alert.whatStudentImagines}
+                          </p>
+                          <p className="text-xs sm:text-sm text-slate-800 bg-slate-50 rounded-lg p-3 border border-slate-200/80">
+                            <strong className="text-violet-800">Teaching move:</strong>{" "}
+                            {alert.practicalResponse}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {supportTab === "selfcheck" && (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold text-violet-700">
+                        Part 5 · 3-Item Quick Self-Check (Formative Retrieval)
+                      </p>
+                      {typeof activeCase.selfCheckScore === "number" && (
+                        <span className="text-xs font-mono font-semibold text-emerald-800 tabular-nums">
+                          Recorded score: {activeCase.selfCheckScore} /{" "}
+                          {activeCase.support.quickSelfCheck.length}
+                        </span>
+                      )}
+                    </div>
+
+                    {activeCase.support.quickSelfCheck.map((item, qIdx) => {
+                      const chosen = selfCheckAnswers[qIdx];
+                      return (
+                        <div
+                          key={qIdx}
+                          className="rounded-xl border border-slate-200 bg-white p-4 space-y-2.5"
+                        >
+                          <h3 className="text-sm font-semibold text-slate-900">
+                            {item.question}
+                          </h3>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            {item.options.map((opt, optIdx) => {
+                              const isChosen = chosen === optIdx;
+                              const isCorrect = optIdx === item.correctIndex;
+                              return (
+                                <button
+                                  key={optIdx}
+                                  type="button"
+                                  onClick={() => void handleSelectSelfCheck(qIdx, optIdx)}
+                                  className={`rounded-lg border px-3 py-2 text-left text-xs transition-colors ${
+                                    chosen !== undefined && isCorrect
+                                      ? "border-emerald-500 bg-emerald-50 text-emerald-950 font-semibold"
+                                      : isChosen
+                                      ? "border-rose-400 bg-rose-50 text-rose-900"
+                                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                                  }`}
+                                >
+                                  {opt}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {chosen !== undefined && (
+                            <p className="text-xs text-slate-700 bg-slate-50 rounded-lg px-3 py-2 border border-slate-200">
+                              {item.feedback}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
 
@@ -828,7 +1120,11 @@ export function LessonPrepStudio({
                       </div>
                       <div>
                         <p className="text-xs font-semibold text-violet-700 mb-0.5">
-                          Low-cost classroom demonstration
+                          Part 6 · Low-Cost Classroom Demonstration (
+                          {activeCase.usesLabEquipment
+                            ? "Lab equipment enabled"
+                            : "Everyday household items"}
+                          )
                         </p>
                         <h2 className="font-display text-xl font-bold text-slate-900">
                           {activeCase.support.improvisedActivity.title}
@@ -870,6 +1166,15 @@ export function LessonPrepStudio({
                       </div>
                     </div>
 
+                    <div className="rounded-xl bg-amber-50 border border-amber-200 p-4">
+                      <p className="text-xs font-semibold text-amber-900 mb-1">
+                        Classroom safety protocol
+                      </p>
+                      <p className="text-xs sm:text-sm text-amber-950 leading-relaxed">
+                        {activeCase.support.improvisedActivity.safetyProtocol}
+                      </p>
+                    </div>
+
                     <div className="rounded-xl bg-violet-50 border border-violet-100 p-4">
                       <p className="text-xs font-semibold text-violet-900 mb-1">
                         What the class should conclude
@@ -880,17 +1185,69 @@ export function LessonPrepStudio({
                     </div>
                   </div>
                 )}
+
+                {supportTab === "judge" && (
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs font-semibold text-violet-700">
+                        Lesson Quality Check
+                      </p>
+                      <span className="text-xs text-slate-600 tabular-nums">
+                        {activeCase.support.judgeReport.passed ? "Ready for practice" : "Needs quick review"}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                      {[
+                        {
+                          label: "Conceptual Accuracy",
+                          score: activeCase.support.judgeReport.scores.conceptualAccuracy,
+                        },
+                        {
+                          label: "Analogy Clarity",
+                          score: activeCase.support.judgeReport.scores.analogyFidelity,
+                        },
+                        {
+                          label: "Misconception Depth",
+                          score: activeCase.support.judgeReport.scores.misconceptionDepth,
+                        },
+                        {
+                          label: "Local Feasibility",
+                          score: activeCase.support.judgeReport.scores.localFeasibility,
+                        },
+                        {
+                          label: "Quick Readability",
+                          score: activeCase.support.judgeReport.scores.mobileScannability,
+                        },
+                      ].map((row) => (
+                        <div
+                          key={row.label}
+                          className="rounded-xl border border-slate-200 bg-slate-50/70 p-3.5"
+                        >
+                          <p className="text-xs text-slate-600">{row.label}</p>
+                          <p className="mt-1 font-display text-xl font-bold text-slate-900 tabular-nums">
+                            {row.score} / 3
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="text-xs text-slate-600 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                      {activeCase.support.judgeReport.notes}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
             <div className="mt-6 pt-5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4">
               <p className="text-xs text-slate-500">
-                Ready to test this explanation against a tough learner follow-up before class?
+                Ready to test this explanation in a quick student exchange?
               </p>
               <button
                 type="button"
                 onClick={onGoToRehearsal}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-700 hover:bg-violet-800 text-white text-sm font-semibold transition-colors whitespace-nowrap focus-visible:outline-2 focus-visible:outline-violet-600"
+                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-700 hover:bg-violet-800 text-white text-sm font-semibold transition-colors whitespace-nowrap shrink-0"
               >
                 <span>Practice explaining this</span>
                 <ArrowRight className="w-4 h-4" />

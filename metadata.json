@@ -2,5 +2,5 @@
   "name": "BANSAY",
   "description": "Building Adaptive Non-Specialist Support and Assessment for Youth educators — low-bandwidth lesson prep, AI learner rehearsal, specialist mentor review, and CPD portfolio platform.",
   "requestFramePermissions": [],
-  "majorCapabilities": []
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
