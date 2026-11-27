@@ -455,12 +455,20 @@ export async function generateConceptPackJson<T>({
   schema,
 }: Omit<StructuredJsonRequest, "imageData" | "modelRole">): Promise<T> {
   if (hasGeminiProvider()) {
-    return generateGeminiJson<T>({
-      instructions,
-      input,
-      schema,
-      modelRole: "concept-pack",
-    });
+    try {
+      return await generateGeminiJson<T>({
+        instructions,
+        input,
+        schema,
+        modelRole: "concept-pack",
+      });
+    } catch (error) {
+      const status = (error as { status?: number })?.status;
+      // A temporary Gemini outage should not block pack creation when an
+      // OpenRouter provider is also configured.
+      if (!hasOpenRouterProvider() || ![429, 500, 502, 503, 504].includes(status || 0)) throw error;
+      console.warn(`[concept-pack] Gemini temporarily unavailable (HTTP ${status}); trying OpenRouter.`);
+    }
   }
 
   return generateOpenRouterJson<T>({

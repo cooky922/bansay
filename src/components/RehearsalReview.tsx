@@ -3,6 +3,7 @@ import {
   BookMarked,
   CalendarClock,
   CheckCircle2,
+  Circle,
   Download,
   Loader2,
   Lock,
@@ -26,7 +27,7 @@ import { UI_COPY } from "../data/bansayData";
 import { rehearsalGradeLabel, REHEARSAL_LIMIT, type RehearsalRequest } from "../lib/rehearsal";
 import { useLearnerConversation } from "./useLearnerConversation";
 import { DemoMentorReview } from "./DemoMentorReview";
-import { demoMentors, type DemoReviewState } from "../lib/demoMentorReview";
+import { demoMentors, demoReviewContent, type DemoReviewState } from "../lib/demoMentorReview";
 import { CustomSelect } from "./CustomSelect";
 import { Checkbox, FieldError } from "./ui";
 
@@ -37,6 +38,7 @@ interface RehearsalReviewProps {
   onRehearseTurn: (payload: RehearsalRequest) => Promise<LessonCase>;
   onSubmitReview: (caseId: string, attachmentIds: string[]) => Promise<void>;
   demo?: { review?: DemoReviewState; skip: () => void; reset: () => void; save: () => void; refresher: (step: number) => void };
+  sampleReview?: DemoReviewState;
   onSubmitFreshCase: (
     caseId: string,
     teacherRevision: string,
@@ -68,6 +70,7 @@ export function RehearsalReview({
   onRehearseTurn,
   onSubmitReview,
   demo,
+  sampleReview,
   onSubmitFreshCase,
   onRegisterMedia,
   onPurgeMedia,
@@ -431,19 +434,21 @@ export function RehearsalReview({
   });
 
   const gradeLabel = rehearsalGradeLabel(activeCase.gradeLevel);
-  const freshCaseUnlocked = Boolean(demo?.review?.reviewedAt) || activeCase.freshCaseStatus !== "locked";
-  const submitted = chat.shared && (demo ? Boolean(demo.review) : Boolean(activeCase.mentorReview.submittedForReview));
-  const assigned = submitted && (demo || activeCase.mentorReview.assignment === "assigned");
-  const ready = demo ? Boolean(demo.review?.reviewedAt) : submitted && activeCase.mentorReview.status !== "pending";
-  const reviewTime = demo ? "About 6 seconds in this demo." : activeCase.leadTimeTier === "standard-sla"
+  const feedback = sampleReview ?? demo?.review;
+  const freshCaseUnlocked = Boolean(feedback?.reviewedAt) || activeCase.freshCaseStatus !== "locked";
+  const hasSampleFeedback = Boolean(feedback);
+  const submitted = chat.shared && (hasSampleFeedback || Boolean(activeCase.mentorReview.submittedForReview));
+  const assigned = submitted && (hasSampleFeedback || activeCase.mentorReview.assignment === "assigned");
+  const ready = feedback ? Boolean(feedback.reviewedAt) : submitted && activeCase.mentorReview.status !== "pending";
+  const reviewTime = hasSampleFeedback ? "Temporary sample feedback will be ready shortly." : activeCase.leadTimeTier === "standard-sla"
     ? "Target within 2 school days after assignment." : "Best effort. Feedback may arrive after class.";
   const progress = revising ? 3 : ready || assigned ? 2 : submitted || isSubmittingReview ? 1 : 0;
   const activeMediaAssets = activeCase.mediaAssets.filter((m) => m.status !== "purged" && (phase2 || m.tier !== "cot-video"));
   const attachmentsToShare = activeMediaAssets.filter((asset) => asset.hasContent && asset.consentConfirmed && !asset.sharedForReview);
-  if (reviewOpen && demo?.review?.reviewedAt) {
-    return <DemoMentorReview lesson={activeCase} review={demo.review} onBack={() => setReviewOpen(false)}
+  if (reviewOpen && feedback?.reviewedAt) {
+    return <DemoMentorReview lesson={activeCase} review={feedback} onBack={() => setReviewOpen(false)}
       onFreshCase={() => { setReviewOpen(false); setRevising(true); setScenarioTab(2); }}
-      onSave={demo.save} onRefresher={demo.refresher} />;
+      onSave={demo?.save ?? (() => undefined)} onRefresher={demo?.refresher ?? (() => undefined)} />;
   }
 
 
@@ -512,7 +517,6 @@ export function RehearsalReview({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                     <span className="font-bold text-bansay-deep">{studentName} &middot; Simulated {gradeLabel} learner</span>
-                    <span className="rounded-full bg-bansay-tint px-2 py-0.5 text-xs font-semibold text-bansay-strong">AI student</span>
                   </div>
                   <p className="text-xs text-slate-600 wrap-anywhere">{activeCase.topic}</p>
                   <p className="text-xs font-semibold text-bansay-strong">Turn {Math.min((chat.closing || chat.shared) ? chat.turns : chat.turns + 1, REHEARSAL_LIMIT)} of {REHEARSAL_LIMIT}</p>
@@ -694,13 +698,22 @@ export function RehearsalReview({
                 </p>
               </div>
 
-              {activeCase.mentorReview.teachingMove && (
+              <div className="rounded-xl border border-bansay-line bg-bansay-tint p-4">
+                <p className="text-sm font-semibold text-bansay-strong">Practice the revision with the AI learner</p>
+                <p className="mt-1 text-sm text-slate-700">Start a fresh simulation, then teach the revised explanation in your own words.</p>
+                <button type="button" className="ui-button ui-button-primary mt-3" disabled={chat.sending || chat.pending}
+                  onClick={() => { setScenarioTab(1); void chat.send(undefined, true); }}>
+                  {chat.sending ? <><Loader2 className="mr-2 size-4 animate-spin" aria-hidden="true" />Starting practice…</> : "Practice revised explanation"}
+                </button>
+              </div>
+
+              {(feedback ? demoMentors(activeCase.subject).mentor : activeCase.mentorReview.teachingMove) && (
                 <div className="rounded-xl bg-violet-50 border border-violet-200 p-4">
                   <p className="text-xs font-semibold text-violet-900 mb-1">
-                    Mentor&apos;s practical teaching move to apply
+                    {feedback ? "Sample mentor feedback to apply" : "Mentor&apos;s practical teaching move to apply"}
                   </p>
                   <p className="text-sm text-slate-800">
-                    {activeCase.mentorReview.teachingMove}
+                    {feedback ? demoReviewContent(activeCase, feedback.transcript).move : activeCase.mentorReview.teachingMove}
                   </p>
                 </div>
               )}
@@ -781,23 +794,28 @@ export function RehearsalReview({
             </div>
             <button type="button" disabled={!ready || isSubmittingReview} onClick={() => setReviewOpen((open) => !open)}
               className={`ui-button w-full ${ready && !isSubmittingReview ? "ui-button-primary" : "ui-button-secondary"}`}>
-              {isSubmittingReview ? "Finding a mentor..." : ready ? "Review available" : assigned ? "Pending review" : submitted ? "Waiting for a mentor" : "Practice"}
+              {isSubmittingReview ? "Finding a mentor..." : ready ? feedback?.sampleOnly ? "View sample feedback" : demo ? "View demo review" : "View mentor review" : assigned ? "Preparing sample feedback" : submitted ? "Waiting for a mentor" : "Practice"}
             </button>
             <p className="text-sm text-purple-100" role="status">
               {isSubmittingReview ? "Finding a mentor..." : !submitted ? "A mentor will be assigned when you submit." : !assigned ? "No mentor is available yet. We'll notify you when one is assigned." : reviewTime}
             </p>
             {assigned && !isSubmittingReview && (
               <dl className="space-y-2 border-t border-white/25 pt-3 text-sm">
-                <div><dt className="text-purple-100">Assigned mentor {demo && <span className="font-bold">Demo</span>}</dt><dd className="wrap-anywhere font-semibold">{demo ? demoMentors(activeCase.subject).mentor : activeCase.mentorReview.mentorName}</dd></div>
-                <div><dt className="text-purple-100">Backup reviewer {demo && <span className="font-bold">Demo</span>}</dt><dd className="wrap-anywhere font-semibold">{demo ? demoMentors(activeCase.subject).backup : activeCase.mentorReview.backupMentorName || "No backup available yet"}</dd></div>
+                <div><dt className="text-purple-100">Assigned mentor {(demo || hasSampleFeedback) && <span className="font-bold">Sample</span>}</dt><dd className="wrap-anywhere font-semibold">{hasSampleFeedback ? demoMentors(activeCase.subject).mentor : activeCase.mentorReview.mentorName}</dd></div>
+                <div><dt className="text-purple-100">Backup reviewer {(demo || hasSampleFeedback) && <span className="font-bold">Sample</span>}</dt><dd className="wrap-anywhere font-semibold">{hasSampleFeedback ? demoMentors(activeCase.subject).backup : activeCase.mentorReview.backupMentorName || "No backup available yet"}</dd></div>
               </dl>
             )}
-            <span className="inline-block rounded-full bg-white/15 px-2 py-1 text-xs font-semibold">{demo?.review?.reviewedAt ? "Mentor verified (demo)" : activeCase.packStatus === "mentor-verified" ? "Mentor verified" : "Unverified AI draft"}</span>
+            <span className="inline-block rounded-full bg-white/15 px-2 py-1 text-xs font-semibold">{feedback?.reviewedAt ? "Sample feedback" : activeCase.packStatus === "mentor-verified" ? "Mentor verified" : "Unverified AI draft"}</span>
             <ol aria-label="Review progress" className="space-y-1 border-t border-white/25 pt-3">
-              {["Practice", "Submitted", "Mentor review", "Revise"].map((step, index) => <li key={step} aria-current={index === progress ? "step" : undefined}
+              {["Practice", "Submitted", "Mentor review", "Revise"].map((step, index) => {
+                const complete = index === 0 ? submitted : index === 1 ? submitted && !isSubmittingReview : index === 2 ? ready : activeCase.freshCaseStatus === "submitted" || activeCase.freshCaseStatus === "verified";
+                const loading = index === 0 ? chat.sending || chat.typing : index === 1 ? isSubmittingReview : index === 2 ? submitted && !ready : isSavingFresh || (revising && chat.sending);
+                const StepIcon = loading ? Loader2 : complete ? CheckCircle2 : Circle;
+                return <li key={step} aria-current={index === progress ? "step" : undefined}
                 className={`flex items-center gap-2 rounded-lg px-2 py-1 text-sm ${index === progress ? "bg-white font-semibold text-bansay-deep" : "text-purple-100"}`}>
-                <span className="w-4 text-center" aria-hidden="true">{index + 1}</span>{step}
-              </li>)}
+                <StepIcon className={`size-4 shrink-0 ${loading ? "animate-spin" : ""}`} aria-hidden="true" />{step}
+              </li>;
+              })}
             </ol>
           </div>
           {demo && <details className="rounded-xl border border-bansay-line bg-white p-3">

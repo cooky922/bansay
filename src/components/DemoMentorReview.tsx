@@ -20,7 +20,7 @@ export function DemoMentorReview({ lesson, review, onBack, onFreshCase, onSave, 
   return (
     <section className="space-y-4">
       <button type="button" onClick={onBack} className="ui-button ui-button-quiet">Back to rehearsal</button>
-      <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">Sample review for demo purposes. Not from a real mentor.</p>
+      <p className="rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-950">{review.sampleOnly ? "Temporary sample feedback for demonstration. This is not from a real mentor and is not saved as a mentor note." : "Sample review for demo purposes. Not from a real mentor."}</p>
       <header>
         <h1 ref={heading} tabIndex={-1} className="wrap-anywhere">{lesson.topic}</h1>
         <p className="mt-1 text-sm text-slate-700">{demoMentors(lesson.subject).mentor} <span className="rounded bg-bansay-tint px-1.5 text-bansay-strong">Demo</span> &middot; {lesson.subject} &middot; {review.reviewedAt && new Date(review.reviewedAt).toLocaleDateString()}</p>
@@ -48,10 +48,10 @@ export function DemoMentorReview({ lesson, review, onBack, onFreshCase, onSave, 
           </li>;
         })}</ol>
       </section>
-      <p className="rounded-xl border border-bansay-line bg-white p-3 text-sm"><strong>Mentor verified (demo)</strong> &middot; This sample illustrates a mentor check of the explanation, example, and classroom teaching move.</p>
+      <p className="rounded-xl border border-bansay-line bg-white p-3 text-sm"><strong>{review.sampleOnly ? "Sample review scope" : "Mentor verified (demo)"}</strong> &middot; This sample illustrates a check of the explanation, example, and classroom teaching move.</p>
       <div className="flex flex-wrap gap-2">
         <button type="button" onClick={onFreshCase} className="ui-button ui-button-primary">Try a fresh case</button>
-        <button type="button" disabled={saved} onClick={() => { onSave(); setSaved(true); }} className="ui-button ui-button-secondary">{saved ? "Saved to demo portfolio" : "Save to portfolio"}</button>
+        {!review.sampleOnly && <button type="button" disabled={saved} onClick={() => { onSave(); setSaved(true); }} className="ui-button ui-button-secondary">{saved ? "Saved to demo portfolio" : "Save to portfolio"}</button>}
         <button type="button" aria-expanded={followUp} onClick={() => setFollowUp((open) => !open)} className="ui-button ui-button-secondary">Ask a follow-up</button>
       </div>
       {followUp && <form className="space-y-2 rounded-xl border border-slate-200 bg-white p-4" onSubmit={(event) => { event.preventDefault(); if (question.trim()) setAnswer(true); }}>

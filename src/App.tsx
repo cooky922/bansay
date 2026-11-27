@@ -203,6 +203,11 @@ export default function App() {
     () => cases.find((c) => c.id === activeCaseId) || cases[0],
     [cases, activeCaseId]
   );
+  const rehearsalInProgress = Boolean(
+    activeCase &&
+      !activeCase.mentorReview.submittedForReview &&
+      !activeCase.rehearsalMessages.some((message) => message.closing)
+  );
 
   const upsertCase = useCallback((record: LessonCase) => {
     setCases((prev) => {
@@ -287,9 +292,12 @@ export default function App() {
     if (section === "privacy" || window.location.hash === "#privacy") {
       window.history.replaceState(null, "", section === "privacy" ? "#privacy" : window.location.pathname + window.location.search);
     }
-    if (section === "rehearsal" && !activeCase) {
+    const canViewSubmittedReview = Boolean(activeCase?.mentorReview.submittedForReview);
+    if (section === "rehearsal" && !rehearsalInProgress && !canViewSubmittedReview) {
       setActiveSection("prep");
-      setToast("Build a 10-Minute Concept Pack before starting rehearsal.");
+      setToast(activeCase
+        ? "Start a lesson practice from its Concept Pack before opening Rehearsal & Review."
+        : "Build a Concept Pack before starting rehearsal.");
       return;
     }
     setActiveSection(section);
@@ -388,29 +396,36 @@ export default function App() {
   }, [upsertCase, demoEnabled, user, activeCase, demoCases]);
 
   const handleSubmitReview = async (caseId: string, attachmentIds: string[]) => {
+    let transcript: LessonCase["rehearsalMessages"];
     if (demoEnabled && user) {
       const lesson = demoCases[caseId];
       if (!lesson) return;
       const updated = finishDemoPractice(lesson, user.preferredLanguage, user.displayName);
       if (updated === lesson) return;
       setDemoCases((current) => ({ ...current, [caseId]: updated }));
-      setDemoReviews((current) => ({
-        ...current, [caseId]: { readyAt: Date.now() + DEMO_REVIEW_DELAY_MS, transcript: currentRehearsal(updated.rehearsalMessages) },
-      }));
-      setReviewAnnouncement("");
-      return;
+      transcript = currentRehearsal(updated.rehearsalMessages);
+    } else {
+      const res = await bansayFetch(`/api/bansay/cases/${caseId}/submit-review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ attachmentIds }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Unable to submit rehearsal.");
+      }
+      const updated = data.caseRecord as LessonCase;
+      upsertCase(updated);
+      transcript = currentRehearsal(updated.rehearsalMessages);
     }
-    const res = await bansayFetch(`/api/bansay/cases/${caseId}/submit-review`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({ attachmentIds }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      throw new Error(data.error || "Unable to submit rehearsal.");
-    }
-    upsertCase(data.caseRecord as LessonCase);
+    // Temporary sample feedback is kept in client state only; it is never sent
+    // to the mentor-review API or written as a mentor note.
+    setDemoReviews((current) => ({
+      ...current,
+      [caseId]: { readyAt: Date.now() + DEMO_REVIEW_DELAY_MS, transcript, sampleOnly: !demoEnabled },
+    }));
+    setReviewAnnouncement("");
   };
 
   const handleSubmitFreshCase = async (
@@ -598,9 +613,10 @@ export default function App() {
       if (!review || review.reviewedAt) return current;
       return { ...current, [caseId]: { ...review, reviewedAt: new Date().toISOString() } };
     });
-    setToast("Your mentor review is ready");
-    setReviewAnnouncement("Your mentor review is ready");
-  }, []);
+    const message = demoEnabled ? "Your mentor review is ready" : "Your sample mentor feedback is ready";
+    setToast(message);
+    setReviewAnnouncement(message);
+  }, [demoEnabled]);
 
   useEffect(() => {
     const timers = Object.entries(demoReviews).filter(([, review]) => !review.reviewedAt)
@@ -678,15 +694,14 @@ export default function App() {
 
   const language = user.preferredLanguage;
   const lowDataMode = user.lowDataMode;
-  const activeDemoReview = activeCase && demoEnabled ? demoReviews[activeCase.id] : undefined;
+  const activeSampleReview = activeCase ? demoReviews[activeCase.id] : undefined;
+  const activeDemoReview = demoEnabled ? activeSampleReview : undefined;
   const displayedRehearsal = demoEnabled && activeCase
     ? demoCases[activeCase.id] ?? { ...activeCase, rehearsalMessages: [], mediaAssets: [] }
     : activeCase;
   const badge = rehearsalBadge(cases);
-  if (demoEnabled) {
-    badge.ready += Object.values(demoReviews).filter((review) => review.reviewedAt).length;
-    badge.waiting += Object.values(demoReviews).filter((review) => !review.reviewedAt).length;
-  }
+  badge.ready += Object.values(demoReviews).filter((review) => review.reviewedAt).length;
+  badge.waiting += Object.values(demoReviews).filter((review) => !review.reviewedAt).length;
   const pendingReviewsCount = cases.filter((lesson) => lesson.mentorReview.status === "pending").length;
   const account: AccountMenuProps = {
     user,
@@ -759,6 +774,7 @@ export default function App() {
                   },
                   refresher: (step) => { handleSelectSection("prep"); setPackStep(step); },
                 } : undefined}
+                sampleReview={activeSampleReview}
                 onRehearseTurn={handleRehearseTurn}
                 onSubmitReview={handleSubmitReview}
                 onSubmitFreshCase={handleSubmitFreshCase}
@@ -769,7 +785,7 @@ export default function App() {
                 }
                 peerLibrary={peerLibrary}
                 onSaveLibraryItem={handleSaveLibraryItem}
-                isLessonReady={Boolean(activeCase)}
+                isLessonReady={rehearsalInProgress || Boolean(activeCase?.mentorReview.submittedForReview)}
                 onPlanLesson={() => setActiveSection("prep")}
               />
             )}

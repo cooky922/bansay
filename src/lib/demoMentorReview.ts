@@ -10,6 +10,15 @@ export interface DemoReviewState {
   readyAt: number;
   reviewedAt?: string;
   transcript: RehearsalMessage[];
+  sampleOnly?: boolean;
+  aiGenerated?: boolean;
+  response?: {
+    focusedGap: string;
+    teachingMove: string;
+    quickRefresher: string;
+    masteredSkill: string;
+    practiceSkill: string;
+  };
 }
 
 const fallback = {
@@ -25,10 +34,22 @@ const fixtures: Record<string, typeof fallback> = {
   English: { correction: "Separate the claim from the specific words that support it.", move: "Ask the learner to point to one phrase and explain what it contributes.", refresher: "Review the key terms and try an example in different words.", step: 0 },
 };
 
-export function demoReviewContent(lesson: LessonCase, transcript: RehearsalMessage[]) {
+export function demoReviewContent(lesson: LessonCase, transcript: RehearsalMessage[], response?: DemoReviewState["response"]) {
   const fixture = fixtures[lesson.subject] ?? fallback;
   const turns = transcript.filter((turn) => turn.sender === "teacher");
-  return { ...fixture, strong: turns[0], correctionTurn: turns.at(-1) };
+  return {
+    ...fixture,
+    ...(response ? {
+      correction: response.focusedGap || fixture.correction,
+      move: response.teachingMove || fixture.move,
+      nextStep: response.teachingMove || fixture.move,
+      refresher: response.quickRefresher || fixture.refresher,
+      whatWorked: response.masteredSkill,
+    } : {}),
+    nextStep: response?.teachingMove || fixture.move,
+    strong: turns[0],
+    correctionTurn: turns.at(-1),
+  };
 }
 
 export function demoMentors(subject: string) {

@@ -514,6 +514,12 @@ async function learnerReply({
   let reply = closing ? scriptedClosing(language) : scriptedLearnerReply(lesson, language, turn);
   let isScripted = true;
 
+  // Closing is application-controlled so the fifth teacher turn always ends
+  // with the localized thank-you, regardless of the teacher's answer or model state.
+  if (closing) {
+    return { reply: closingLearnerMessage(reply, language, user.displayName), isScripted, closing };
+  }
+
   if (!scripted && !isDemoMode()) {
     try {
       const output = await generateOpenRouterJson<{ reply: string; understood: boolean }>({
@@ -549,7 +555,6 @@ async function learnerReply({
   }
 
   if (opening) reply = openingLearnerMessage(reply, user.displayName);
-  if (closing) reply = closingLearnerMessage(reply, language, user.displayName);
   return { reply, isScripted, closing };
 }
 
@@ -704,6 +709,48 @@ app.post("/api/bansay/cases/:id/submit-review", async (req, res) => {
   }
 
   res.json({ caseRecord: getOwnedLessonCase(database, owned.id, user.id) });
+});
+
+app.post("/api/bansay/cases/:id/sample-mentor-response", async (req, res) => {
+  const user = requireAuth(req, res);
+  if (!user) return;
+  if (user.role !== "teacher") {
+    res.status(403).json({ error: "Sample mentor responses are available in the teacher rehearsal." });
+    return;
+  }
+  const lesson = getOwnedLessonCase(database, String(req.params.id), user.id);
+  if (!lesson) {
+    res.status(404).json({ error: "Lesson session not found." });
+    return;
+  }
+
+  const transcript = Array.isArray(req.body?.transcript) ? req.body.transcript : lesson.rehearsalMessages;
+  const teacherWords = transcript
+    .filter((message: unknown): message is { sender: string; text: string } => Boolean(
+      message && typeof message === "object" && "sender" in message && "text" in message &&
+      (message as { sender?: unknown }).sender === "teacher" && typeof (message as { text?: unknown }).text === "string"
+    ))
+    .map((message: { text: string }) => message.text.trim().slice(0, 1000))
+    .filter(Boolean)
+    .slice(-5);
+  if (!teacherWords.length) {
+    res.status(400).json({ error: "A teacher response is needed to generate sample feedback." });
+    return;
+  }
+
+  try {
+    const response = await generateOpenRouterJson({
+      name: "sample_mentor_response",
+      modelRole: "rehearsal",
+      instructions: "Write a supportive sample mentor response for a teacher rehearsal. It is AI-generated demo feedback, never claim to be a real person or verified curriculum material. Return only JSON matching the schema. Do not include scores, grades, rankings, pass/fail language, URLs, curriculum codes, or invented facts. Do not include personal data.",
+      input: `Subject: ${lesson.subject}\nGrade: ${lesson.gradeLevel}\nTopic: ${lesson.topic}\nLanguage: ${languageName(user.preferredLanguage)}\nConcept basis: ${lesson.support.bigIdea.summary}\nKnown misconceptions: ${JSON.stringify(lesson.support.validatedPack?.misconceptions.items ?? lesson.support.misconceptionAlerts)}\nTeacher's own words from the submitted rehearsal:\n${teacherWords.map((line, index) => `${index + 1}. ${line}`).join("\n")}\n\nCreate concise feedback for these fields: focusedGap (one careful correction tied to the supplied concept basis), teachingMove (one useful next step), quickRefresher (a short reminder supported by the concept basis, or empty), masteredSkill (one specific thing that worked, referring to the teacher's wording), practiceSkill (one short area to keep practicing). Use only the supplied context for content claims. Do not score or judge the teacher.`,
+      schema: MENTOR_FEEDBACK_SCHEMA,
+    });
+    res.json({ response });
+  } catch (error) {
+    const { status, message } = extractApiError(error);
+    res.status(status).json({ error: message });
+  }
 });
 
 app.post("/api/bansay/cases/:id/fresh-case", (req, res) => {

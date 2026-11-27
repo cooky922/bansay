@@ -26,5 +26,12 @@ export function openDatabase(databasePath = process.env.BANSAY_DATABASE_PATH || 
       database.prepare("INSERT INTO schema_migrations (filename, applied_at) VALUES (?, ?)").run(filename, new Date().toISOString());
     })();
   }
+  // Repair databases where the migration ledger says 004 was applied even
+  // though its shared_with_mentor column is missing (for example, after an
+  // interrupted or manually restored local database migration).
+  const rehearsalColumns = database.prepare("PRAGMA table_info(rehearsal_turns)").all() as Array<{ name: string }>;
+  if (!rehearsalColumns.some((column) => column.name === "shared_with_mentor")) {
+    database.exec("ALTER TABLE rehearsal_turns ADD COLUMN shared_with_mentor INTEGER NOT NULL DEFAULT 0");
+  }
   return database;
 }
