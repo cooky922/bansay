@@ -2,7 +2,7 @@ export type BansayLanguage = "en" | "fil" | "ceb";
 
 export type UserRole = "teacher" | "mentor" | "coordinator";
 
-export type ActiveSection = "prep" | "rehearsal" | "portfolio" | "cohort";
+export type ActiveSection = "prep" | "rehearsal" | "library" | "portfolio" | "cohort";
 
 export type SubjectName = "Science" | "Mathematics" | "English";
 

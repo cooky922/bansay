@@ -63,6 +63,7 @@ export function Sidebar({
     ...(role === "teacher" ? [
       { id: "prep" as ActiveSection, label: "Lesson Prep Studio", icon: Sparkles, detail: "Intake, baseline, Concept Pack" },
       { id: "rehearsal" as ActiveSection, label: "Rehearsal & Review", icon: MessageSquare, detail: "Practice, correction, fresh case" },
+      { id: "library" as ActiveSection, label: "Peer Library", icon: Users, detail: "Mentor-verified packs" },
       { id: "portfolio" as ActiveSection, label: "Teaching Portfolio", icon: Award, detail: "Private evidence and annual track" },
     ] : role === "mentor" ? [
       { id: "cohort" as ActiveSection, label: "Review Queue", icon: Users, detail: "Initial, fresh-case, post-class", hint: pendingReviewsCount ? `${pendingReviewsCount}` : undefined },

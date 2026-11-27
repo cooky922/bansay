@@ -5,6 +5,7 @@ import { LessonPrepStudio } from "./components/LessonPrepStudio";
 import { RehearsalReview } from "./components/RehearsalReview";
 import { CpdPortfolio } from "./components/CpdPortfolio";
 import { CohortOversight } from "./components/CohortOversight";
+import { PeerLibrary } from "./components/PeerLibrary";
 import { SessionStartFlow, type TeacherProfileDraft } from "./components/SessionStartFlow";
 import { Alert } from "./components/ui";
 import type {
@@ -325,6 +326,10 @@ export default function App() {
                 onAddEvidence={handleAddEvidence}
                 practiceHours={14.5 + (evidenceItems.length - INITIAL_EVIDENCE_ITEMS.length) * 0.5}
               />
+            )}
+
+            {activeSection === "library" && (
+              <PeerLibrary peerLibrary={peerLibrary} onSaveLibraryItem={handleSaveLibraryItem} />
             )}
 
             {activeSection === "cohort" && (
