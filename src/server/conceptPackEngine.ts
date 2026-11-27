@@ -22,7 +22,7 @@ import {
 } from "./conceptPackValidator.ts";
 
 export const PACK_UNAVAILABLE_ERROR_MESSAGE =
-  "This pack is unavailable. Request a mentor-prepared pack.";
+  "Could not build your Concept Pack. Try again.";
 
 export function languageName(code: string): string {
   if (code === "fil") return "Filipino (Tagalog)";
@@ -337,6 +337,16 @@ ${
 }`;
 }
 
+function isProviderConnectionFailure(error: unknown): boolean {
+  let current = error;
+  while (current instanceof Error) {
+    if (/fetch failed|network error|connection refused/i.test(current.message)) return true;
+    if (current.cause === current) break;
+    current = current.cause;
+  }
+  return false;
+}
+
 export async function generatePackWithSingleRetry({
   subject,
   gradeLevel,
@@ -400,6 +410,9 @@ export async function generatePackWithSingleRetry({
         `[concept-pack] provider attempt ${attempt + 1} failed (HTTP ${status || "unknown"}):`,
         errObj instanceof Error ? errObj.message : error
       );
+      if (isProviderConnectionFailure(error)) {
+        throw new ConceptPackUnavailableError("BANSAY could not connect to the AI provider. Check the server connection and try again.");
+      }
       if (
         status === 400 ||
         status === 401 ||

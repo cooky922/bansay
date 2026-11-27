@@ -37,6 +37,7 @@ export function ConceptPackSteps({
   onSelfCheckComplete,
   onPracticeExplaining,
   progressKey,
+  initialStep,
   renderOfflineFooter,
 }: {
   pack: ValidatedConceptPack;
@@ -44,6 +45,7 @@ export function ConceptPackSteps({
   onSelfCheckComplete?: (score: number) => void;
   onPracticeExplaining: () => void;
   progressKey: string;
+  initialStep?: number;
   renderOfflineFooter: (backButton: ReactNode, practiceButton: ReactNode) => ReactNode;
 }) {
   const [savedProgress] = useState(() => {
@@ -62,8 +64,8 @@ export function ConceptPackSteps({
       return { step: 0, max: 0, answers: {}, prediction: "", revealed: false };
     }
   });
-  const [step, setStep] = useState(savedProgress.step);
-  const [maxReachedStep, setMaxReachedStep] = useState(savedProgress.max);
+  const [step, setStep] = useState(initialStep ?? savedProgress.step);
+  const [maxReachedStep, setMaxReachedStep] = useState(Math.max(savedProgress.max, initialStep ?? 0));
   const stepPanel = useRef<HTMLElement>(null);
   const [showFormulaDetails, setShowFormulaDetails] = useState(false);
 

@@ -1,4 +1,4 @@
-﻿import { useRef, useState, type ReactNode } from "react";
+﻿import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check } from "lucide-react";
 
 export function OfflinePackCard({
@@ -19,6 +19,22 @@ export function OfflinePackCard({
       return null;
     }
   });
+  useEffect(() => {
+    function syncSavedPack(event: Event) {
+      if (event instanceof StorageEvent && event.key !== storageKey) return;
+      try {
+        setSavedText(localStorage.getItem(storageKey));
+      } catch {
+        // The last known saved state is still usable.
+      }
+    }
+    window.addEventListener("storage", syncSavedPack);
+    window.addEventListener("bansay:offline-downloads-changed", syncSavedPack);
+    return () => {
+      window.removeEventListener("storage", syncSavedPack);
+      window.removeEventListener("bansay:offline-downloads-changed", syncSavedPack);
+    };
+  }, [storageKey]);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState("");
   const preview = useRef<HTMLDialogElement>(null);

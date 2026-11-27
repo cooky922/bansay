@@ -1,3 +1,4 @@
+import { currentRehearsal } from "../lib/rehearsal.ts";
 import crypto from "crypto";
 import {
   ENGINEERING_CONTROLS_TABLE,
@@ -40,16 +41,6 @@ export function computeDaysUntil(dateStr: string | null | undefined): number {
   const target = new Date(`${dateStr}T00:00:00`);
   if (Number.isNaN(target.getTime())) return 7;
   return Math.round((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-export function mentorForSubject(subject: SubjectName) {
-  if (subject === "Mathematics") {
-    return { name: "Lourdes Tan", affiliation: "MSU-IIT Mathematics Education" };
-  }
-  if (subject === "English") {
-    return { name: "Grace Bautista", affiliation: "MSU-IIT English Education" };
-  }
-  return { name: "Ramon Villamor", affiliation: "MSU-IIT Science Education" };
 }
 
 export function ensureInitialSharedLacPacks(db: BansayDatabase) {
@@ -134,7 +125,7 @@ export function purgeExpiredMedia(db: BansayDatabase) {
   const now = new Date().toISOString();
   db.prepare(
     `UPDATE media_assets
-     SET status = 'purged'
+     SET status = 'purged', content = NULL, content_type = NULL
      WHERE status IN ('active', 'stripped-from-portfolio')
        AND expires_at IS NOT NULL
        AND expires_at <= ?`
@@ -185,6 +176,8 @@ function hydrateLessonCase(db: BansayDatabase, row: Record<string, unknown>): Le
     portfolioIncluded: Boolean(m.portfolio_included),
     status: m.status as MediaAssetRecord["status"],
     label: String(m.label),
+    hasContent: Boolean(m.content_type),
+    sharedForReview: Boolean(m.review_turn_id),
     createdAt: String(m.created_at),
   }));
 
@@ -217,9 +210,9 @@ function hydrateLessonCase(db: BansayDatabase, row: Record<string, unknown>): Le
     mediaAssets,
     mentorReview: reviewRow
       ? {
-          mentorName: String(reviewRow.mentor_name),
-          mentorAffiliation: String(reviewRow.mentor_affiliation),
-          backupMentorName: String(reviewRow.backup_mentor_name),
+          mentorName: reviewRow.submitted_for_review && row.mentor_id ? String(reviewRow.mentor_name) : "",
+          mentorAffiliation: reviewRow.submitted_for_review && row.mentor_id ? String(reviewRow.mentor_affiliation) : "",
+          backupMentorName: reviewRow.submitted_for_review && row.mentor_id ? String(reviewRow.backup_mentor_name) : "",
           languagesCovered: JSON.parse(String(reviewRow.languages_covered_json || '["en"]')) as BansayLanguage[],
           reviewedAt: String(reviewRow.reviewed_at),
           focusedGap: String(reviewRow.focused_gap || ""),
@@ -228,6 +221,8 @@ function hydrateLessonCase(db: BansayDatabase, row: Record<string, unknown>): Le
           masteredSkill: String(reviewRow.mastered_skill || ""),
           practiceSkill: String(reviewRow.practice_skill || ""),
           status: reviewRow.status as "pending" | "returned" | "completed",
+          submittedForReview: Boolean(reviewRow.submitted_for_review),
+          assignment: !reviewRow.submitted_for_review ? "unsubmitted" : row.mentor_id ? "assigned" : "waiting",
           reviewQueueLane: (reviewRow.review_queue_lane || "standard-sla") as LeadTimeTier,
           packAuditDurationSec:
             reviewRow.pack_audit_duration_sec !== null && reviewRow.pack_audit_duration_sec !== undefined
@@ -241,7 +236,7 @@ function hydrateLessonCase(db: BansayDatabase, row: Record<string, unknown>): Le
           packSubstantiveRewrite: Boolean(reviewRow.pack_substantive_rewrite),
           packVerifiedAt: reviewRow.pack_verified_at ? String(reviewRow.pack_verified_at) : undefined,
         }
-      : INITIAL_CASES[0].mentorReview,
+      : { ...INITIAL_CASES[0].mentorReview, mentorName: "", backupMentorName: "", submittedForReview: false, assignment: "unsubmitted" },
     teacherRevision: String(row.teacher_revision || ""),
     freshCaseResponse: String(row.fresh_case_response || ""),
     freshCaseStatus: (row.fresh_case_status || "locked") as LessonCase["freshCaseStatus"],
@@ -276,7 +271,6 @@ export function createLessonCaseRecord(
   const daysUntilClass = computeDaysUntil(params.classDate);
   const leadTimeTier: LeadTimeTier = daysUntilClass >= 3 ? "standard-sla" : "best-effort";
   const dbLang: "en" | "fil" = params.language === "fil" ? "fil" : "en";
-  const mentor = mentorForSubject(params.subject);
 
   db.transaction(() => {
     db.prepare(
@@ -338,11 +332,9 @@ export function createLessonCaseRecord(
       `INSERT INTO mentor_reviews (
         session_id, mentor_name, mentor_affiliation, backup_mentor_name,
         languages_covered_json, reviewed_at, status, review_queue_lane, submitted_for_review
-      ) VALUES (?, ?, ?, 'Elena Villanueva', ?, 'Pending rehearsal submission', 'pending', ?, 0)`
+      ) VALUES (?, '', '', '', ?, '', 'pending', ?, 0)`
     ).run(
       sessionId,
-      mentor.name,
-      mentor.affiliation,
       JSON.stringify(["en", "fil", "ceb"]),
       leadTimeTier
     );
@@ -412,20 +404,20 @@ export function listTeacherCases(db: BansayDatabase, teacherId: string): LessonC
   return rows.map((row) => hydrateLessonCase(db, row));
 }
 
-export function listMentorReviewQueue(db: BansayDatabase): LessonCase[] {
+export function listMentorReviewQueue(db: BansayDatabase, mentorId: string): LessonCase[] {
   purgeExpiredMedia(db);
   const rows = db
     .prepare(
       `SELECT s.*
        FROM lesson_sessions s
        JOIN mentor_reviews m ON m.session_id = s.id
-       WHERE m.submitted_for_review = 1
+       WHERE m.submitted_for_review = 1 AND (s.mentor_id = ? OR s.backup_mentor_id = ?)
        ORDER BY CASE WHEN s.lead_time_tier = 'standard-sla' THEN 0 ELSE 1 END,
                 s.class_date ASC,
                 s.updated_at DESC`
     )
-    .all() as Array<Record<string, unknown>>;
-  return rows.map((row) => hydrateLessonCase(db, row));
+    .all(mentorId, mentorId) as Array<Record<string, unknown>>;
+  return rows.map((row) => mentorLessonCase(db, row));
 }
 
 export function getOwnedLessonCase(
@@ -441,17 +433,31 @@ export function getOwnedLessonCase(
 
 export function getAnySubmittedLessonCase(
   db: BansayDatabase,
-  sessionId: string
+  sessionId: string,
+  mentorId: string,
 ): LessonCase | null {
   const row = db
     .prepare(
       `SELECT s.*
        FROM lesson_sessions s
        JOIN mentor_reviews m ON m.session_id = s.id
-       WHERE s.id = ? AND m.submitted_for_review = 1`
+       WHERE s.id = ? AND m.submitted_for_review = 1 AND (s.mentor_id = ? OR s.backup_mentor_id = ?)`
     )
-    .get(sessionId) as Record<string, unknown> | undefined;
-  return row ? hydrateLessonCase(db, row) : null;
+    .get(sessionId, mentorId, mentorId) as Record<string, unknown> | undefined;
+  return row ? mentorLessonCase(db, row) : null;
+}
+
+function mentorLessonCase(db: BansayDatabase, row: Record<string, unknown>) {
+  const lesson = hydrateLessonCase(db, row);
+  const cutoff = lesson.rehearsalMessages.map((message) => Boolean(message.sharedWithMentor)).lastIndexOf(true);
+  const turnId = lesson.rehearsalMessages[cutoff]?.id;
+  const attachments = new Set((db.prepare("SELECT id FROM media_assets WHERE session_id = ? AND review_turn_id = ?")
+    .all(lesson.id, turnId ?? "") as Array<{ id: string }>).map(({ id }) => id));
+  return {
+    ...lesson,
+    rehearsalMessages: cutoff < 0 ? [] : currentRehearsal(lesson.rehearsalMessages.slice(0, cutoff + 1)),
+    mediaAssets: lesson.mediaAssets.filter((asset) => attachments.has(asset.id)),
+  };
 }
 
 export function listTeacherEvidence(

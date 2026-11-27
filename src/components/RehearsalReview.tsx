@@ -7,8 +7,6 @@ import {
   Loader2,
   Lock,
   MessageSquare,
-  Mic,
-  MoreHorizontal,
   Paperclip,
   Search,
   Send,
@@ -27,6 +25,8 @@ import type {
 import { UI_COPY } from "../data/bansayData";
 import { rehearsalGradeLabel, REHEARSAL_LIMIT, type RehearsalRequest } from "../lib/rehearsal";
 import { useLearnerConversation } from "./useLearnerConversation";
+import { DemoMentorReview } from "./DemoMentorReview";
+import { demoMentors, type DemoReviewState } from "../lib/demoMentorReview";
 import { CustomSelect } from "./CustomSelect";
 import { Checkbox, FieldError } from "./ui";
 
@@ -35,7 +35,8 @@ interface RehearsalReviewProps {
   teacher: { id: string; displayName?: string };
   activeCase?: LessonCase;
   onRehearseTurn: (payload: RehearsalRequest) => Promise<LessonCase>;
-  onSubmitReview: (caseId: string) => Promise<void>;
+  onSubmitReview: (caseId: string, attachmentIds: string[]) => Promise<void>;
+  demo?: { review?: DemoReviewState; skip: () => void; reset: () => void; save: () => void; refresher: (step: number) => void };
   onSubmitFreshCase: (
     caseId: string,
     teacherRevision: string,
@@ -49,6 +50,7 @@ interface RehearsalReviewProps {
       consentConfirmed: boolean;
       noStudentFacesConfirmed: boolean;
       label: string;
+      attachment?: { type: string; base64: string };
     }
   ) => Promise<void>;
   onPurgeMedia: (caseId: string, mediaId: string) => Promise<void>;
@@ -65,6 +67,7 @@ export function RehearsalReview({
   activeCase,
   onRehearseTurn,
   onSubmitReview,
+  demo,
   onSubmitFreshCase,
   onRegisterMedia,
   onPurgeMedia,
@@ -82,12 +85,14 @@ export function RehearsalReview({
   const [recordingKind, setRecordingKind] = useState<"voice" | "video">("video");
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [voiceUrl, setVoiceUrl] = useState<string | null>(null);
-  const [voiceTranscript, setVoiceTranscript] = useState("");
-  const chat = useLearnerConversation(isLessonReady ? activeCase : undefined, language, teacher, onRehearseTurn);
+  const chat = useLearnerConversation(isLessonReady ? activeCase : undefined, language, teacher, onRehearseTurn, Boolean(demo));
   const studentName = chat.studentName ?? "Learner";
   const initials = chat.studentName === "AK" ? "AK" : studentName[0];
-  const [mediaMenu, setMediaMenu] = useState<"attachments" | "more" | null>(null);
+  const [mediaMenu, setMediaMenu] = useState<"attachments" | null>(null);
   const phase2 = import.meta.env.VITE_BANSAY_PHASE_2 === "true";
+  const reviewDialog = useRef<HTMLDialogElement>(null);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [revising, setRevising] = useState(false);
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [rehearsalError, setRehearsalError] = useState<string | null>(null);
   const [submissionNotice, setSubmissionNotice] = useState<string | null>(null);
@@ -116,6 +121,8 @@ export function RehearsalReview({
   );
   const [consentChecked, setConsentChecked] = useState(false);
   const [noStudentFacesChecked, setNoStudentFacesChecked] = useState(false);
+  const [mediaFile, setMediaFile] = useState<File>();
+  const [savingAttachment, setSavingAttachment] = useState(false);
   const [mediaLabel, setMediaLabel] = useState("");
   const [consentError, setConsentError] = useState<string | null>(null);
 
@@ -131,7 +138,6 @@ export function RehearsalReview({
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recordingTimerRef = useRef<number | null>(null);
   const videoChunksRef = useRef<Blob[]>([]);
-  const recognitionRef = useRef<any>(null);
   const recordingUrlRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const conversationRef = useRef<HTMLDivElement | null>(null);
@@ -153,7 +159,6 @@ export function RehearsalReview({
 
   const clearVoiceNote = () => {
     setVoiceUrl(null);
-    setVoiceTranscript("");
     if (recordingUrlRef.current) URL.revokeObjectURL(recordingUrlRef.current);
     recordingUrlRef.current = null;
   };
@@ -165,7 +170,6 @@ export function RehearsalReview({
       if (recordingUrlRef.current) URL.revokeObjectURL(recordingUrlRef.current);
       clearRecordingTimer();
       mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
-      recognitionRef.current?.stop?.();
     };
   }, []);
 
@@ -198,12 +202,11 @@ export function RehearsalReview({
 
   const stopRecording = () => {
     mediaRecorderRef.current?.stop();
-    recognitionRef.current?.stop?.();
     clearRecordingTimer();
     setIsRecording(false);
   };
 
-  const startRecording = async (kind: "voice" | "video", dictate = false) => {
+  const startRecording = async (kind: "voice" | "video") => {
     if (mediaStreamRef.current) return;
     setRecordingKind(kind);
     setMediaMenu(null);
@@ -253,25 +256,6 @@ export function RehearsalReview({
         mediaStreamRef.current = null;
       };
 
-      const SpeechRecognition =
-        (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (dictate && navigator.onLine && SpeechRecognition) {
-        const recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = language === "fil" ? "fil-PH" : language === "ceb" ? "ceb-PH" : "en-PH";
-        recognition.onresult = (event: any) => {
-          let transcript = "";
-          for (let index = 0; index < event.results.length; index += 1) {
-            transcript += event.results[index][0].transcript;
-          }
-          setVoiceTranscript(transcript.trim());
-          setTeacherInput(transcript.trim());
-        };
-        recognition.start();
-        recognitionRef.current = recognition;
-      }
-
       recorder.start();
       mediaRecorderRef.current = recorder;
       setRecordingSeconds(0);
@@ -303,15 +287,13 @@ export function RehearsalReview({
   };
 
   const handleSubmitForMentorReview = async () => {
+    if (!chat.turns || isSubmittingReview) return;
+    reviewDialog.current?.close();
     setIsSubmittingReview(true);
     setRehearsalError(null);
     try {
-      await onSubmitReview(activeCase.id);
-      setSubmissionNotice(
-        activeCase.leadTimeTier === "standard-sla"
-          ? `Sent privately to ${activeCase.mentorReview.mentorName} for feedback before class.`
-          : `Sent privately to ${activeCase.mentorReview.mentorName}. Because class is under 3 days away, feedback may arrive after class.`
-      );
+      await new Promise<void>((resolve) => window.setTimeout(resolve, 1500));
+      await onSubmitReview(activeCase.id, attachmentsToShare.map(({ id }) => id));
     } catch (err) {
       setRehearsalError(
         err instanceof Error ? err.message : "Unable to submit rehearsal for review."
@@ -347,6 +329,7 @@ export function RehearsalReview({
   const openMediaConsentModal = (tier: "voice-note" | "cot-video") => {
     setMediaMenu(null);
     setConsentModalTier(tier);
+    setMediaFile(undefined);
     setConsentChecked(false);
     setNoStudentFacesChecked(tier === "voice-note");
     setMediaLabel(
@@ -370,7 +353,18 @@ export function RehearsalReview({
       );
       return;
     }
+    if (!mediaFile || !mediaFile.size || mediaFile.size > 5 * 1024 * 1024) {
+      setConsentError("Choose an audio or video file up to 5 MB.");
+      return;
+    }
+    setSavingAttachment(true);
     try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+        reader.onerror = reject;
+        reader.readAsDataURL(mediaFile);
+      });
       await onRegisterMedia(activeCase.id, {
         tier: consentModalTier,
         step: 4,
@@ -378,17 +372,20 @@ export function RehearsalReview({
         noStudentFacesConfirmed:
           consentModalTier === "cot-video" ? noStudentFacesChecked : false,
         label: mediaLabel.trim() || consentModalTier,
+        attachment: { type: mediaFile.type, base64 },
       });
       setConsentModalTier(null);
       setSubmissionNotice(
         consentModalTier === "cot-video"
-          ? "Classroom clip consent saved (auto-deleted after 7 days; excluded from portfolio exports)."
-          : "Voice note consent saved (auto-deleted after 14 days; excluded from portfolio exports)."
+          ? "Classroom clip attached for mentor submission."
+          : "Voice note attached for mentor submission."
       );
     } catch (err) {
       setConsentError(
-        err instanceof Error ? err.message : "Unable to save media consent."
+        err instanceof Error ? err.message : "Unable to save your attachment."
       );
+    } finally {
+      setSavingAttachment(false);
     }
   };
 
@@ -397,7 +394,7 @@ export function RehearsalReview({
       `BANSAY OFFLINE REHEARSAL PROMPT`,
       `Topic: ${activeCase.topic} (${activeCase.subject} · ${gradeLabel})`,
       `Class Date: ${activeCase.classDate}`,
-      `Assigned Mentor: ${activeCase.mentorReview.mentorName}`,
+
       ``,
       `Simulated Learner (${studentName}) asks:`,
       activeCase.support.simulatedStudentPrompt.openingQuestion,
@@ -434,8 +431,21 @@ export function RehearsalReview({
   });
 
   const gradeLabel = rehearsalGradeLabel(activeCase.gradeLevel);
-  const freshCaseUnlocked = activeCase.freshCaseStatus !== "locked";
+  const freshCaseUnlocked = Boolean(demo?.review?.reviewedAt) || activeCase.freshCaseStatus !== "locked";
+  const submitted = chat.shared && (demo ? Boolean(demo.review) : Boolean(activeCase.mentorReview.submittedForReview));
+  const assigned = submitted && (demo || activeCase.mentorReview.assignment === "assigned");
+  const ready = demo ? Boolean(demo.review?.reviewedAt) : submitted && activeCase.mentorReview.status !== "pending";
+  const reviewTime = demo ? "About 6 seconds in this demo." : activeCase.leadTimeTier === "standard-sla"
+    ? "Target within 2 school days after assignment." : "Best effort. Feedback may arrive after class.";
+  const progress = revising ? 3 : ready || assigned ? 2 : submitted || isSubmittingReview ? 1 : 0;
   const activeMediaAssets = activeCase.mediaAssets.filter((m) => m.status !== "purged" && (phase2 || m.tier !== "cot-video"));
+  const attachmentsToShare = activeMediaAssets.filter((asset) => asset.hasContent && asset.consentConfirmed && !asset.sharedForReview);
+  if (reviewOpen && demo?.review?.reviewedAt) {
+    return <DemoMentorReview lesson={activeCase} review={demo.review} onBack={() => setReviewOpen(false)}
+      onFreshCase={() => { setReviewOpen(false); setRevising(true); setScenarioTab(2); }}
+      onSave={demo.save} onRefresher={demo.refresher} />;
+  }
+
 
   return (
     <div className="space-y-6">
@@ -448,6 +458,7 @@ export function RehearsalReview({
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight text-balance">
             {copy.rehearsalTitle}
           </h1>
+          {demo && <span className="mt-1 inline-block rounded-full bg-bansay-tint px-2 py-1 text-xs font-semibold text-bansay-strong">Demo mode</span>}
         </div>
 
         <button
@@ -506,19 +517,6 @@ export function RehearsalReview({
                   <p className="text-xs text-slate-600 wrap-anywhere">{activeCase.topic}</p>
                   <p className="text-xs font-semibold text-bansay-strong">Turn {Math.min((chat.closing || chat.shared) ? chat.turns : chat.turns + 1, REHEARSAL_LIMIT)} of {REHEARSAL_LIMIT}</p>
                 </div>
-                <div className="relative">
-                  <button type="button" className="icon-button" aria-label="Conversation options" aria-expanded={mediaMenu === "more"} onClick={() => setMediaMenu(mediaMenu === "more" ? null : "more")}>
-                    <MoreHorizontal size={22} />
-                  </button>
-                  {mediaMenu === "more" && (
-                    <div className="absolute right-0 top-full z-20 w-64 rounded-xl border border-bansay-line bg-white p-2 shadow-lg">
-                      <button type="button" disabled={isRecording} onClick={() => void startRecording("video")} className="ui-button ui-button-quiet w-full justify-start text-left">
-                        Self-review camera: stays on your device
-                      </button>
-                      <button type="button" className="ui-button ui-button-quiet w-full justify-start" onClick={() => setMediaMenu("attachments")}>Attachments</button>
-                    </div>
-                  )}
-                </div>
               </header>
 
               {chat.offline && <p role="status" className="shrink-0 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-950">Offline. {studentName} uses scripted questions from your pack. Messages sync when you reconnect.</p>}
@@ -555,8 +553,8 @@ export function RehearsalReview({
                     <p className="font-bold text-bansay-deep">{chat.shared ? "Sent to mentor" : "Rehearsal complete"}</p>
                     <p className="mt-1 text-sm text-slate-700">{chat.closing === "understood" ? `${studentName} restated the idea in their own words.` : chat.closing === "turn-limit" ? "You reached five turns." : "Your mentor can now review this conversation."}</p>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {!chat.shared && <button type="button" className="ui-button ui-button-primary" disabled={isSubmittingReview || chat.offline || chat.pending} onClick={() => void handleSubmitForMentorReview()}>Send to mentor</button>}
-                      <button type="button" className="ui-button ui-button-secondary" onClick={() => void chat.send(undefined, true)}>Keep practicing</button>
+                      {!chat.shared && <button type="button" className="ui-button ui-button-primary" disabled={!chat.turns || isSubmittingReview || (!demo && (chat.offline || chat.pending))} onClick={() => reviewDialog.current?.showModal()}>Submit to mentor</button>}
+                      <button type="button" className="ui-button ui-button-secondary" onClick={() => void chat.send(undefined, true)}>{chat.shared ? "Start another practice" : "Keep practicing"}</button>
                     </div>
                   </div>
                 )}
@@ -564,7 +562,7 @@ export function RehearsalReview({
 
               <div className="relative z-10 shrink-0 rounded-b-2xl border-t border-bansay-line bg-white p-2 sm:p-3">
                 {(rehearsalError || chat.error) && <p role="alert" className="mb-2 text-xs text-rose-800">{rehearsalError || chat.error} {chat.pending && !chat.offline && <button type="button" className="font-semibold underline" onClick={chat.retrySync}>Retry sync</button>}</p>}
-                {(chat.offline || chat.pending) && chat.turns > 0 && <p className="mb-2 text-xs text-slate-600">Mentor submission is available after the conversation syncs.</p>}
+                {!demo && (chat.offline || chat.pending) && chat.turns > 0 && <p className="mb-2 text-xs text-slate-600">Mentor submission is available after the conversation syncs.</p>}
                 {(isRecording || recordedVideoUrl) && <details open={isRecording || undefined} className="mb-2 max-h-40 overflow-auto">
                   <summary className="text-xs font-semibold text-bansay-strong">{isRecording ? "Recording controls" : "Review local recording"}</summary>
                 {(isRecording || recordedVideoUrl) && (
@@ -605,11 +603,6 @@ export function RehearsalReview({
                         ? "Camera clips stay on this device only and are cleared when you close the tab."
                         : "This recording stays on this device."}
                     </p>
-                    {voiceTranscript && (
-                      <p className="rounded-lg bg-white/80 px-3 py-2 text-xs text-slate-700">
-                        {voiceTranscript}
-                      </p>
-                    )}
                   </div>
                 )}
 
@@ -628,19 +621,22 @@ export function RehearsalReview({
                       }}
                       placeholder="Write a message..."
                       className="max-h-28 min-h-11 min-w-0 flex-1 resize-none rounded-2xl border border-slate-300 bg-white px-3 py-2.5 text-base text-slate-900 [field-sizing:content]" />
-                    <button type="button" className="icon-button min-h-11 min-w-9" aria-label={isRecording ? "Stop recording" : "Dictate a message"} onClick={isRecording ? stopRecording : () => void startRecording("voice", true)}><Mic size={20} /></button>
                     <button type="submit" aria-label="Send message" disabled={!teacherInput.trim()} className="grid size-11 shrink-0 place-items-center rounded-full bg-bansay-action text-white hover:bg-bansay-strong disabled:opacity-50"><Send size={18} /></button>
                   </form>
+                )}
+                {chat.closing && !chat.shared && (
+                    <button type="button" className="icon-button min-h-11 min-w-9" aria-label="Attachments" aria-expanded={mediaMenu === "attachments"} onClick={() => setMediaMenu(mediaMenu === "attachments" ? null : "attachments")}><Paperclip size={20} /></button>
                 )}
                 {mediaMenu === "attachments" && (
                   <div className="absolute bottom-full left-2 right-2 z-20 max-h-64 space-y-2 overflow-y-auto rounded-xl border border-bansay-line bg-white p-3 shadow-lg sm:right-auto sm:w-80">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-xs leading-relaxed text-slate-700">Mentor attachments require consent. Voice notes expire after 14 days{phase2 ? " and classroom clips after 7 days" : ""}. Both stay out of portfolio exports.</p>
+                      <p className="text-xs leading-relaxed text-slate-700">Mentor attachments require consent. Voice notes expire after 14 days{phase2 ? " and classroom clips after 7 days" : ""}. Both stay out of portfolio exports.{demo && " Demo mode keeps recordings local."}</p>
                       <button type="button" className="icon-button" aria-label="Close attachments" onClick={() => setMediaMenu(null)}><X size={16} /></button>
                     </div>
-                    <button type="button" className="ui-button ui-button-secondary" disabled={chat.offline} onClick={() => openMediaConsentModal("voice-note")}>Voice note consent</button>
+                    <button type="button" className="ui-button ui-button-secondary" disabled={chat.offline || Boolean(demo)} onClick={() => openMediaConsentModal("voice-note")}>Attach audio</button>
                     <button type="button" className="ui-button ui-button-secondary" disabled={isRecording} onClick={() => void startRecording("voice")}>Record a local voice note</button>
-                    {phase2 && <button type="button" className="ui-button ui-button-secondary" disabled={chat.offline} onClick={() => openMediaConsentModal("cot-video")}>Classroom clip consent</button>}
+                    <button type="button" className="ui-button ui-button-secondary" disabled={isRecording} onClick={() => void startRecording("video")}>Self-review camera (stays on this device)</button>
+                    {phase2 && <button type="button" className="ui-button ui-button-secondary" disabled={chat.offline} onClick={() => openMediaConsentModal("cot-video")}>Attach video</button>}
                 {activeMediaAssets.length > 0 && (
                   <div className="space-y-2">
                     {activeMediaAssets.map((asset) => (
@@ -676,8 +672,8 @@ export function RehearsalReview({
                   </div>
                 )}
                 {chat.turns > 0 && !chat.closing && !chat.shared && !chat.sending && (
-                  <button type="button" className="ui-button ui-button-secondary mt-2" disabled={isSubmittingReview || chat.offline || chat.pending} onClick={() => void handleSubmitForMentorReview()}>
-                    {isSubmittingReview ? "Sending..." : "Finish and send to mentor"}
+                  <button type="button" className="ui-button ui-button-secondary mt-2" disabled={isSubmittingReview || chat.offline || chat.pending} onClick={() => reviewDialog.current?.showModal()}>
+                    {isSubmittingReview ? "Finding a mentor..." : "Submit to mentor"}
                   </button>
                 )}
               </div>
@@ -774,59 +770,46 @@ export function RehearsalReview({
           )}
         </div>
 
-        {/* Right Rail: Review SLA, Mentor & Coaching Note (4 cols) */}
-        <div className="lg:col-span-4 space-y-5">
-          <div className="rounded-2xl bg-bansay-deep text-white p-5 space-y-4">
+        <aside className="space-y-4 lg:col-span-4" aria-label="Review timeline">
+          <div className="space-y-4 rounded-2xl bg-bansay-deep p-5 text-white">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs text-purple-200/80 font-medium">Class date &amp; review timeline</p>
-                <p className="font-display text-2xl font-bold mt-0.5 tabular-nums">
-                  {formattedClassDate}
-                </p>
+                <p className="text-xs font-medium text-purple-100">Class date &amp; review timeline</p>
+                <p className="mt-0.5 text-2xl font-bold">{formattedClassDate}</p>
               </div>
-              <CalendarClock className="w-5 h-5 text-purple-200 shrink-0" />
+              <CalendarClock className="size-5 shrink-0 text-purple-200" aria-hidden="true" />
             </div>
-
-            <p className="text-xs text-purple-100/85 leading-relaxed">
-              {activeCase.leadTimeTier === "standard-sla"
-                ? "Class is 3+ school days away, so mentor feedback is aimed before class."
-                : "Class is under 3 school days away; mentor feedback may arrive after class."}
+            <button type="button" disabled={!ready || isSubmittingReview} onClick={() => setReviewOpen((open) => !open)}
+              className={`ui-button w-full ${ready && !isSubmittingReview ? "ui-button-primary" : "ui-button-secondary"}`}>
+              {isSubmittingReview ? "Finding a mentor..." : ready ? "Review available" : assigned ? "Pending review" : submitted ? "Waiting for a mentor" : "Practice"}
+            </button>
+            <p className="text-sm text-purple-100" role="status">
+              {isSubmittingReview ? "Finding a mentor..." : !submitted ? "A mentor will be assigned when you submit." : !assigned ? "No mentor is available yet. We'll notify you when one is assigned." : reviewTime}
             </p>
-
-            <div className="pt-3 border-t border-white/15 space-y-2 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-purple-200/80">Assigned mentor</span>
-                <span className="font-semibold text-white">
-                  {activeCase.mentorReview.mentorName}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-purple-200/80">Backup reviewer</span>
-                <span className="text-purple-100">
-                  {activeCase.mentorReview.backupMentorName}
-                </span>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-purple-200/80">Pack status</span>
-                <span className="text-purple-100 capitalize">
-                  {activeCase.packStatus.replace("-", " ")}
-                </span>
-              </div>
-            </div>
+            {assigned && !isSubmittingReview && (
+              <dl className="space-y-2 border-t border-white/25 pt-3 text-sm">
+                <div><dt className="text-purple-100">Assigned mentor {demo && <span className="font-bold">Demo</span>}</dt><dd className="wrap-anywhere font-semibold">{demo ? demoMentors(activeCase.subject).mentor : activeCase.mentorReview.mentorName}</dd></div>
+                <div><dt className="text-purple-100">Backup reviewer {demo && <span className="font-bold">Demo</span>}</dt><dd className="wrap-anywhere font-semibold">{demo ? demoMentors(activeCase.subject).backup : activeCase.mentorReview.backupMentorName || "No backup available yet"}</dd></div>
+              </dl>
+            )}
+            <span className="inline-block rounded-full bg-white/15 px-2 py-1 text-xs font-semibold">{demo?.review?.reviewedAt ? "Mentor verified (demo)" : activeCase.packStatus === "mentor-verified" ? "Mentor verified" : "Unverified AI draft"}</span>
+            <ol aria-label="Review progress" className="space-y-1 border-t border-white/25 pt-3">
+              {["Practice", "Submitted", "Mentor review", "Revise"].map((step, index) => <li key={step} aria-current={index === progress ? "step" : undefined}
+                className={`flex items-center gap-2 rounded-lg px-2 py-1 text-sm ${index === progress ? "bg-white font-semibold text-bansay-deep" : "text-purple-100"}`}>
+                <span className="w-4 text-center" aria-hidden="true">{index + 1}</span>{step}
+              </li>)}
+            </ol>
           </div>
-
-          <div className="rounded-2xl bg-white border border-slate-200 p-5 space-y-4">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-xs font-semibold text-violet-700">
-                Latest coaching note
-              </p>
-              <span className="text-xs text-slate-500 tabular-nums">
-                {activeCase.mentorReview.reviewedAt}
-              </span>
+          {demo && <details className="rounded-xl border border-bansay-line bg-white p-3">
+            <summary className="cursor-pointer font-semibold text-bansay-strong">Demo controls</summary>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" disabled={!demo.review || ready || isSubmittingReview} onClick={demo.skip} className="ui-button ui-button-secondary">Skip to review</button>
+              <button type="button" disabled={isSubmittingReview || chat.sending} onClick={() => { demo.reset(); setReviewOpen(false); setRevising(false); setScenarioTab(1); setTeacherInput(""); setSubmissionNotice(null); }} className="ui-button ui-button-secondary">Reset demo</button>
             </div>
-
-            {activeCase.mentorReview.status === "returned" ||
-            activeCase.mentorReview.status === "completed" ? (
+          </details>}
+          {!demo && ready && reviewOpen && (
+            <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4" aria-label="Mentor review">
+              <h2>Mentor review</h2>
               <div className="space-y-3.5">
                 <div>
                   <h3 className="font-display text-base font-bold text-slate-900">
@@ -870,31 +853,32 @@ export function RehearsalReview({
 
                 {freshCaseUnlocked && <button
                   type="button"
-                  onClick={() => setScenarioTab(2)}
+                  onClick={() => { setRevising(true); setScenarioTab(2); }}
                   className="w-full py-2 px-3 rounded-xl bg-bansay-action hover:bg-bansay-strong text-white text-xs font-semibold transition-colors"
                 >
                   Apply feedback on a new example
                 </button>}
               </div>
-            ) : (
-              <div className="space-y-2.5 text-xs text-slate-600 leading-relaxed">
-                <div className="flex items-start gap-2.5">
-                  <MessageSquare className="w-4 h-4 text-violet-700 mt-0.5 shrink-0" />
-                  <p>
-                    Sent privately to{" "}
-                    <strong className="text-slate-900">
-                      {activeCase.mentorReview.mentorName}
-                    </strong>{" "}
-                    for feedback. Your coaching note will appear here once reviewed.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+
+            </section>
+          )}
+        </aside>
       </div>
 
-      {/* Media Consent Modal (Tier 2 COT Video Exception / Tier 3 Opt-in Voice Note) */}
+      <dialog ref={reviewDialog} aria-labelledby="confirm-review-title" className="m-auto w-[min(92vw,30rem)] rounded-2xl border border-bansay-line bg-white p-5 text-slate-900 backdrop:bg-slate-950/45">
+        <h2 id="confirm-review-title">Submit to mentor</h2>
+        <p className="mt-3 text-sm">Your chat transcript will be shared with the assigned mentor. The submitted transcript will be locked.</p>
+        {attachmentsToShare.length > 0 ? <div className="mt-2 text-sm">
+          <p>Attachments you agreed to share</p>
+          <ul className="list-disc pl-5">{attachmentsToShare.map((asset) => <li key={asset.id}>{asset.label}</li>)}</ul>
+        </div> : <p className="mt-2 text-sm">There are no consented audio or video attachments to share.</p>}
+        <p className="mt-2 text-sm"><strong>Expected review time.</strong> {reviewTime}</p>
+        <form method="dialog" className="mt-4 flex flex-wrap justify-end gap-2">
+          <button type="submit" autoFocus className="ui-button ui-button-secondary">Cancel</button>
+          <button type="button" disabled={!chat.turns || isSubmittingReview || chat.sending} onClick={() => void handleSubmitForMentorReview()} className="ui-button ui-button-primary">Submit to mentor</button>
+        </form>
+      </dialog>
+
       {consentModalTier && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50"
@@ -928,6 +912,12 @@ export function RehearsalReview({
             </div>
 
             <form onSubmit={handleConfirmMediaConsent} className="space-y-4">
+              <label className="block text-sm font-semibold">
+                {consentModalTier === "cot-video" ? "Video clip" : "Audio file"} (up to 5 MB)
+                <input type="file" required accept={consentModalTier === "cot-video" ? "video/mp4,video/webm,video/quicktime" : "audio/*"} className="ui-input mt-1"
+                  onChange={(event) => setMediaFile(event.target.files?.[0])} />
+              </label>
+
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 flex items-start gap-2.5 text-xs text-amber-950">
                 <ShieldAlert className="w-4 h-4 text-amber-700 mt-0.5 shrink-0" />
                 <p className="leading-relaxed">
@@ -967,7 +957,7 @@ export function RehearsalReview({
                   onChange={(e) => setConsentChecked(e.target.checked)}
                 />
                 <span>
-                  I consent to temporary encrypted retention (
+                  I consent to temporary private retention (
                   {consentModalTier === "cot-video" ? "7 days" : "14 days"}) for private mentor review only.
                 </span>
               </label>
@@ -986,7 +976,7 @@ export function RehearsalReview({
                   type="submit"
                   className="px-4 py-2 rounded-xl bg-violet-700 hover:bg-violet-800 text-white text-xs font-semibold"
                 >
-                  Confirm consent &amp; log metadata
+                  {savingAttachment ? "Attaching..." : "Attach with consent"}
                 </button>
               </div>
             </form>

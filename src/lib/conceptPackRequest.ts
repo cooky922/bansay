@@ -1,5 +1,7 @@
 export const CONCEPT_PACK_UNAVAILABLE_MESSAGE =
-  "This pack is unavailable. Request a mentor-prepared pack.";
+  "Could not build your Concept Pack. Try again.";
+
+export class ConceptPackRequestError extends Error {}
 
 export async function requestConceptPack<T>(generate: () => Promise<T>): Promise<
   | { ok: true; value: T }
@@ -7,7 +9,7 @@ export async function requestConceptPack<T>(generate: () => Promise<T>): Promise
 > {
   try {
     return { ok: true, value: await generate() };
-  } catch {
-    return { ok: false, message: CONCEPT_PACK_UNAVAILABLE_MESSAGE };
+  } catch (error) {
+    return { ok: false, message: error instanceof ConceptPackRequestError ? error.message : CONCEPT_PACK_UNAVAILABLE_MESSAGE };
   }
 }

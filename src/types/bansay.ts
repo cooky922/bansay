@@ -4,7 +4,7 @@ export type UserRole = "teacher" | "mentor" | "coordinator";
 
 export type CareerStage = "1" | "2" | "3" | "4";
 
-export type ActiveSection = "prep" | "rehearsal" | "library" | "portfolio" | "cohort";
+export type ActiveSection = "prep" | "rehearsal" | "library" | "portfolio" | "cohort" | "privacy";
 
 export type SubjectName = "Science" | "Mathematics" | "English";
 
@@ -264,6 +264,8 @@ export interface MediaAssetRecord {
   consentConfirmed: boolean;
   noStudentFacesConfirmed: boolean;
   retentionDays: 0 | 7 | 14 | 30;
+  hasContent?: boolean;
+  sharedForReview?: boolean;
   expiresAt: string | null;
   portfolioIncluded: boolean;
   status: "local-only" | "active" | "stripped-from-portfolio" | "purged";
@@ -283,6 +285,8 @@ export interface MentorReviewNote {
   masteredSkill: string;
   practiceSkill: string;
   status: "pending" | "returned" | "completed";
+  submittedForReview?: boolean;
+  assignment?: "unsubmitted" | "waiting" | "assigned";
   reviewQueueLane?: LeadTimeTier;
   packAuditDurationSec?: number;
   transcriptReviewDurationSec?: number;

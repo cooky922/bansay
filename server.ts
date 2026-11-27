@@ -30,13 +30,13 @@ import {
   listSharedLacPacks,
   listTeacherCases,
   listTeacherEvidence,
-  mentorForSubject,
   seedStarterDataForUser,
 } from "./src/server/bansayRepo.ts";
 import { generateValidatedConceptPack, languageName } from "./src/server/conceptPackEngine.ts";
 import { shortFieldName } from "./src/server/conceptPackValidator.ts";
 import { closingLearnerMessage, containsContactInfo, containsTopicTitle, currentRehearsal, isStudentName, MAX_REHEARSAL_REPLY_LENGTH, openingLearnerMessage, pickStudentName, rehearsalGradeLabel, rehearsalStudentName, REHEARSAL_LIMIT, scriptedClosing, scriptedLearnerReply, withoutOpeningGreeting } from "./src/lib/rehearsal.ts";
 import { learnerModelRequest } from "./src/server/rehearsalLearner.ts";
+import { assignReviewMentor, routeWaitingReviews } from "./src/server/mentorRouting.ts";
 import { openDatabase } from "./src/server/db.ts";
 import type {
   AuthUserProfile,
@@ -61,6 +61,10 @@ function extractApiError(err: unknown): { status: number; message: string } {
   const status = typeof errorObj?.status === "number" ? errorObj.status : 500;
   const rawMessage = errorObj?.message || "Unexpected server error while contacting AI provider.";
   return { status, message: rawMessage };
+}
+
+function rehearsalDemoEnabled() {
+  return process.env.NODE_ENV !== "production" && !process.argv.includes("--preview") && process.env.DEMO_MODE === "true";
 }
 
 function isDemoMode(): boolean {
@@ -211,13 +215,14 @@ app.post("/api/bansay/auth/logout", (req, res) => {
 app.get("/api/bansay/workspace", (req, res) => {
   const user = requireAuth(req, res);
   if (!user) return;
+  if (!rehearsalDemoEnabled()) routeWaitingReviews(database);
   const sharedLacLibrary = listSharedLacPacks(database);
   const pilotTables = buildPilotTables(database);
   const cases =
     user.role === "teacher"
       ? listTeacherCases(database, user.id)
       : user.role === "mentor"
-      ? listMentorReviewQueue(database)
+      ? listMentorReviewQueue(database, user.id)
       : [];
   const evidenceItems = user.role === "teacher" ? listTeacherEvidence(database, user.id) : [];
 
@@ -226,6 +231,7 @@ app.get("/api/bansay/workspace", (req, res) => {
     cases,
     sharedLacLibrary,
     evidenceItems,
+    rehearsalDemo: user.role === "teacher" && rehearsalDemoEnabled(),
     ...pilotTables,
   });
 });
@@ -410,12 +416,13 @@ app.post("/api/bansay/cases/:id/media", (req, res) => {
   }
 
   try {
-    const { tier, step, consentConfirmed, noStudentFacesConfirmed, label } = req.body as {
+    const { tier, step, consentConfirmed, noStudentFacesConfirmed, label, attachment } = req.body as {
       tier: MediaTier;
       step: 2 | 4 | 7;
       consentConfirmed: boolean;
       noStudentFacesConfirmed: boolean;
       label: string;
+      attachment?: { type?: unknown; base64?: unknown };
     };
 
     if (tier === "cot-video" && process.env.VITE_BANSAY_PHASE_2 !== "true") {
@@ -423,13 +430,32 @@ app.post("/api/bansay/cases/:id/media", (req, res) => {
       return;
     }
 
-    const asset = addMediaMetadataRecord(database, owned.id, user.id, {
+    const accepted = tier === "voice-note"
+      ? ["audio/webm", "audio/ogg", "audio/mpeg", "audio/mp4", "audio/wav", "audio/x-wav", "audio/x-m4a", "audio/aac"]
+      : tier === "cot-video" ? ["video/mp4", "video/webm", "video/quicktime"] : [];
+    let content: Buffer | undefined;
+    let contentType: string | undefined;
+    if (accepted.length) {
+      if (rehearsalDemoEnabled() || !attachment || typeof attachment.type !== "string" || !accepted.includes(attachment.type) ||
+          typeof attachment.base64 !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(attachment.base64) ||
+          attachment.base64.length > Math.ceil(5 * 1024 * 1024 / 3) * 4) {
+        throw new Error("Choose a supported audio or video file up to 5 MB outside Demo mode.");
+      }
+      content = Buffer.from(attachment.base64, "base64");
+      if (!content.length || content.length > 5 * 1024 * 1024) throw new Error("Choose a file up to 5 MB.");
+      contentType = attachment.type;
+    }
+    const asset = database.transaction(() => {
+      const record = addMediaMetadataRecord(database, owned.id, user.id, {
       tier,
       step: step === 2 || step === 7 ? step : 4,
       consentConfirmed: Boolean(consentConfirmed),
       noStudentFacesConfirmed: Boolean(noStudentFacesConfirmed),
       label: label || tier,
-    });
+      });
+      if (content) database.prepare("UPDATE media_assets SET content = ?, content_type = ? WHERE id = ?").run(content, contentType, record.id);
+      return record;
+    })();
 
     res.status(201).json({ asset, caseRecord: getOwnedLessonCase(database, owned.id, user.id) });
   } catch (error) {
@@ -446,9 +472,28 @@ app.delete("/api/bansay/cases/:id/media/:mediaId", (req, res) => {
     return;
   }
   database
-    .prepare("UPDATE media_assets SET status = 'purged', expires_at = ? WHERE id = ? AND session_id = ? AND owner_id = ?")
+    .prepare("UPDATE media_assets SET status = 'purged', expires_at = ?, content = NULL, content_type = NULL WHERE id = ? AND session_id = ? AND owner_id = ?")
     .run(new Date().toISOString(), String(req.params.mediaId), owned.id, user.id);
   res.json({ caseRecord: getOwnedLessonCase(database, owned.id, user.id) });
+});
+
+app.get("/api/bansay/cases/:id/media/:mediaId", (req, res) => {
+  const user = requireAuth(req, res);
+  if (!user) return;
+  const caseId = String(req.params.id);
+  const allowed = user.role === "mentor" ? getAnySubmittedLessonCase(database, caseId, user.id) : getOwnedLessonCase(database, caseId, user.id);
+  if (!allowed?.mediaAssets.some((asset) => asset.id === req.params.mediaId && asset.hasContent && asset.status !== "purged")) {
+    res.sendStatus(404);
+    return;
+  }
+  const media = database.prepare("SELECT content, content_type FROM media_assets WHERE id = ? AND session_id = ? AND expires_at > ?")
+    .get(String(req.params.mediaId), caseId, new Date().toISOString()) as { content: Buffer; content_type: string } | undefined;
+  if (!media?.content) {
+    res.sendStatus(404);
+    return;
+  }
+  res.set({ "Content-Type": media.content_type, "Content-Disposition": "attachment", "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" });
+  res.send(media.content);
 });
 
 async function learnerReply({
@@ -595,6 +640,10 @@ app.post("/api/bansay/rehearse", async (req, res) => {
 app.post("/api/bansay/cases/:id/submit-review", async (req, res) => {
   const user = requireAuth(req, res);
   if (!user) return;
+  if (rehearsalDemoEnabled() && user.role === "teacher") {
+    res.status(409).json({ error: "Demo reviews run locally in your browser." });
+    return;
+  }
   const owned = getOwnedLessonCase(database, String(req.params.id), user.id);
   if (!owned) {
     res.status(404).json({ error: "Lesson session not found." });
@@ -616,22 +665,20 @@ app.post("/api/bansay/cases/:id/submit-review", async (req, res) => {
     lesson: owned, user, studentName: rehearsalStudentName(round) ?? pickStudentName(),
     language, turn: round.filter((message) => message.sender === "teacher").length, round, finish: true,
   });
-  const mentor = mentorForSubject(owned.subject);
-  const queueLabel =
-    owned.leadTimeTier === "standard-sla"
-      ? "Submitted · Target within 2 school days"
-      : "Submitted · Best-effort / Post-class verification queue";
+  const attachmentIds = Array.isArray(req.body?.attachmentIds) ? req.body.attachmentIds.filter((id: unknown): id is string => typeof id === "string") : [];
   const now = new Date().toISOString();
 
   const submitted = database.transaction(() => {
     const latest = getOwnedLessonCase(database, owned.id, user.id)?.rehearsalMessages.at(-1);
     if (latest?.id !== lastMessage.id) return latest?.sharedWithMentor === true;
     if (latest.sharedWithMentor) return true;
+    let submissionTurnId = lastMessage.id;
     if (closingReply) {
+      submissionTurnId = `msg-${crypto.randomUUID()}`;
       database.prepare(
         "INSERT INTO rehearsal_turns (id, session_id, turn_index, sender, text, attachment_type, timestamp_label, created_at, is_scripted, closing_reason, shared_with_mentor) VALUES (?, ?, ?, 'student', ?, 'text', ?, ?, ?, 'finished', 1)"
       ).run(
-        `msg-${crypto.randomUUID()}`, owned.id, owned.rehearsalMessages.length, closingReply.reply,
+        submissionTurnId, owned.id, owned.rehearsalMessages.length, closingReply.reply,
         new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), now, Number(closingReply.isScripted),
       );
     } else {
@@ -640,12 +687,15 @@ app.post("/api/bansay/cases/:id/submit-review", async (req, res) => {
     database
       .prepare(
         `UPDATE mentor_reviews
-         SET mentor_name = ?, mentor_affiliation = ?, reviewed_at = ?,
+         SET mentor_name = '', mentor_affiliation = '', backup_mentor_name = '', reviewed_at = ?, focused_gap = '', teaching_move = '', quick_refresher = '', mastered_skill = '', practice_skill = '',
              status = 'pending', review_queue_lane = ?, submitted_for_review = 1
          WHERE session_id = ?`
       )
-      .run(mentor.name, mentor.affiliation, queueLabel, owned.leadTimeTier, owned.id);
-    database.prepare("UPDATE lesson_sessions SET updated_at = ? WHERE id = ?").run(now, owned.id);
+      .run(now, owned.leadTimeTier, owned.id);
+    database.prepare("UPDATE lesson_sessions SET updated_at = ?, mentor_id = NULL, backup_mentor_id = NULL WHERE id = ?").run(now, owned.id);
+    const share = database.prepare("UPDATE media_assets SET review_turn_id = ? WHERE id = ? AND session_id = ? AND owner_id = ? AND consent_confirmed = 1 AND content IS NOT NULL AND review_turn_id IS NULL AND status <> 'purged' AND expires_at > ?");
+    for (const id of attachmentIds) share.run(submissionTurnId, id, owned.id, user.id, now);
+    assignReviewMentor(database, owned.id, owned.subject);
     return true;
   })();
   if (!submitted) {
@@ -761,7 +811,7 @@ app.post("/api/bansay/cases/:id/verify-pack", (req, res) => {
     res.status(403).json({ error: "Only subject mentors can verify Concept Packs." });
     return;
   }
-  const caseRecord = getAnySubmittedLessonCase(database, String(req.params.id));
+  const caseRecord = getAnySubmittedLessonCase(database, String(req.params.id), user.id);
   if (!caseRecord) {
     res.status(404).json({ error: "Submitted case not found in mentor queue." });
     return;
@@ -824,8 +874,8 @@ app.post("/api/bansay/cases/:id/verify-pack", (req, res) => {
       .run(JSON.stringify(updatedPack), substantiveRewrite ? 1 : 0, user.id, now, caseRecord.id);
 
     database
-      .prepare("UPDATE lesson_sessions SET pack_status = 'mentor-verified', mentor_id = ?, updated_at = ? WHERE id = ?")
-      .run(user.id, now, caseRecord.id);
+      .prepare("UPDATE lesson_sessions SET pack_status = 'mentor-verified', updated_at = ? WHERE id = ?")
+      .run(now, caseRecord.id);
 
     database
       .prepare(
@@ -863,7 +913,7 @@ app.post("/api/bansay/cases/:id/verify-pack", (req, res) => {
   })();
 
   res.json({
-    caseRecord: getAnySubmittedLessonCase(database, caseRecord.id),
+    caseRecord: getAnySubmittedLessonCase(database, caseRecord.id, user.id),
     sharedLacLibrary: listSharedLacPacks(database),
     ...buildPilotTables(database),
   });
@@ -876,7 +926,7 @@ app.post("/api/bansay/cases/:id/review", (req, res) => {
     res.status(403).json({ error: "Only subject mentors can submit coaching reviews." });
     return;
   }
-  const caseRecord = getAnySubmittedLessonCase(database, String(req.params.id));
+  const caseRecord = getAnySubmittedLessonCase(database, String(req.params.id), user.id);
   if (!caseRecord) {
     res.status(404).json({ error: "Submitted case not found in mentor queue." });
     return;
@@ -918,7 +968,7 @@ app.post("/api/bansay/cases/:id/review", (req, res) => {
       .prepare(
         `UPDATE mentor_reviews
          SET mentor_name = ?,
-             reviewed_at = 'Returned just now',
+             reviewed_at = ?,
              focused_gap = ?,
              teaching_move = ?,
              quick_refresher = ?,
@@ -930,6 +980,7 @@ app.post("/api/bansay/cases/:id/review", (req, res) => {
       )
       .run(
         user.displayName,
+        now,
         focusedGap.trim().slice(0, 1500),
         teachingMove.trim().slice(0, 1500),
         (quickRefresher || "").trim().slice(0, 1000),
@@ -941,12 +992,12 @@ app.post("/api/bansay/cases/:id/review", (req, res) => {
       );
 
     database
-      .prepare("UPDATE lesson_sessions SET fresh_case_status = ?, mentor_id = ?, updated_at = ? WHERE id = ?")
-      .run(nextFreshStatus, user.id, now, caseRecord.id);
+      .prepare("UPDATE lesson_sessions SET fresh_case_status = ?, updated_at = ? WHERE id = ?")
+      .run(nextFreshStatus, now, caseRecord.id);
   })();
 
   res.json({
-    caseRecord: getAnySubmittedLessonCase(database, caseRecord.id),
+    caseRecord: getAnySubmittedLessonCase(database, caseRecord.id, user.id),
     ...buildPilotTables(database),
   });
 });
@@ -1039,9 +1090,10 @@ app.post("/api/bansay/portfolio/export-log", (req, res) => {
 });
 
 async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
+  if (process.env.NODE_ENV !== "production" && !process.argv.includes("--preview")) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
+      configLoader: "native",
       server: { middlewareMode: true },
       appType: "spa",
     });

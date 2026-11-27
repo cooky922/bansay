@@ -11,7 +11,6 @@ import {
   Lock,
   MoreHorizontal,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import type {
   AuthUserProfile,
@@ -29,6 +28,7 @@ import {
   UI_COPY,
 } from "../data/bansayData";
 import { CustomSelect } from "./CustomSelect";
+import { offlinePackStorageKey } from "../lib/workspaceNavigation";
 import { OfflinePackCard } from "./OfflinePackCard";
 import { ConceptPackSteps } from "./ConceptPackSteps";
 import { DatePicker } from "./DatePicker";
@@ -39,10 +39,10 @@ import { requestConceptPack } from "../lib/conceptPackRequest";
 interface LessonPrepStudioProps {
   language: BansayLanguage;
   lowDataMode: boolean;
+  initialPackStep?: number;
+  demoVerified?: boolean;
   user: AuthUserProfile;
-  cases: LessonCase[];
   activeCase?: LessonCase;
-  onSelectCase: (id: string) => void;
   onGenerateConceptPack: (payload: {
     subject: SubjectName;
     gradeLevel: string;
@@ -76,10 +76,6 @@ function computeDaysUntil(dateStr: string): number {
   const target = new Date(dateStr + "T00:00:00");
   if (Number.isNaN(target.getTime())) return 5;
   return Math.round((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-function defaultClassDate(): string {
-  return new Date(Date.now() + 5 * 86400000).toISOString().slice(0, 10);
 }
 
 function isCurrentConceptPack(value: unknown): value is ValidatedConceptPack {
@@ -174,9 +170,9 @@ function offlinePackText(activeCase: LessonCase, pack: ValidatedConceptPack) {
 export function LessonPrepStudio({
   language,
   user,
-  cases,
   activeCase,
-  onSelectCase,
+  initialPackStep,
+  demoVerified,
   onGenerateConceptPack,
   onPatchCase,
   onGoToRehearsal,
@@ -199,12 +195,12 @@ export function LessonPrepStudio({
 
   // Lesson Setup state (starts blank by default)
   const [subject, setSubject] = useState<SubjectName>("Science");
-  const [gradeLevel, setGradeLevel] = useState("Grade 7");
+  const [gradeLevel, setGradeLevel] = useState("");
   const [topic, setTopic] = useState("");
   const [useCustomTopic, setUseCustomTopic] = useState(false);
   const [customTopic, setCustomTopic] = useState("");
   const teacherMajorInfo = (user.major || user.degree || "General Education").trim();
-  const [classDate, setClassDate] = useState(defaultClassDate());
+  const [classDate, setClassDate] = useState("");
   const [careerStage, setCareerStage] = useState<CareerStage>("1");
   const [usesLabEquipment, setUsesLabEquipment] = useState(false);
   const [showFactSheetInput, setShowFactSheetInput] = useState(false);
@@ -265,6 +261,8 @@ export function LessonPrepStudio({
 
   const resetIntakeToBlank = () => {
     setTopic("");
+    setClassDate("");
+    setGradeLevel("");
     setCustomTopic("");
     setUseCustomTopic(false);
     setCareerStage("1");
@@ -276,8 +274,16 @@ export function LessonPrepStudio({
 
   const handleBuildSupport = async (e: FormEvent) => {
     e.preventDefault();
+    if (!gradeLevel) {
+      setApiError("Please select a grade level.");
+      return;
+    }
     if (!effectiveTopic) {
       setApiError("Please select or enter an upcoming lesson topic.");
+      return;
+    }
+    if (!classDate) {
+      setApiError("Please select a class date.");
       return;
     }
     setApiError(null);
@@ -306,7 +312,7 @@ export function LessonPrepStudio({
       setStep(2);
       onNotify("Your 10-Minute Concept Pack is ready.");
     } catch {
-      setApiError("This pack is unavailable. Request a mentor-prepared pack.");
+      setApiError("Could not build your Concept Pack. Try again.");
     } finally {
       setIsGenerating(false);
     }
@@ -319,6 +325,18 @@ export function LessonPrepStudio({
   return (
     <div className="space-y-6">
       {step === 1 || !activeCase ? (
+        <div className="space-y-3">
+          {activeCase && (
+            <nav aria-label="Breadcrumb" className="flex justify-end">
+              <a href="#concept-pack" onClick={(event) => {
+                event.preventDefault();
+                setStep(2);
+                window.requestAnimationFrame(() => document.getElementById("concept-pack")?.focus());
+              }} className="inline-flex min-h-11 items-center gap-2 rounded-lg px-2 font-semibold text-bansay-strong hover:bg-bansay-tint">
+                Back to Concept Pack <ArrowRight size={17} aria-hidden="true" />
+              </a>
+            </nav>
+          )}
         <section className="w-full bg-white border border-slate-200 rounded-2xl p-5 sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -329,33 +347,7 @@ export function LessonPrepStudio({
                 {copy.step1Title}
               </h1>
             </div>
-            {activeCase && (
-              <button
-                type="button"
-                onClick={() => setStep(2)}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 whitespace-nowrap shrink-0"
-              >
-                <span>Back to Concept Pack</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-            )}
           </div>
-          {cases.length > 1 && activeCase && (
-            <div className="mt-3 w-full max-w-xs">
-              <CustomSelect
-                value={activeCase.id}
-                onChange={(caseId) => {
-                  onSelectCase(caseId);
-                  setStep(2);
-                }}
-                options={cases.map((item) => ({
-                  value: item.id,
-                  label: `${item.subject} (${item.gradeLevel}) - ${item.topic}`,
-                }))}
-                ariaLabel="Switch saved lesson"
-              />
-            </div>
-          )}
           <p className="text-sm text-slate-600 mt-1.5 max-w-2xl">
             Build a focused 10-minute guide around your upcoming topic, explained through concepts from your background.
           </p>
@@ -426,6 +418,7 @@ export function LessonPrepStudio({
                     value: g,
                     label: `${g} · ${curriculumFrameworkForGrade(g).replace(/\s*\([^)]*\)/, "")}`,
                   }))}
+                  placeholder="Select a grade level"
                   ariaLabel="Grade level and curriculum"
                 />
               </div>
@@ -443,7 +436,7 @@ export function LessonPrepStudio({
                     onClick={() => setUseCustomTopic(!useCustomTopic)}
                     className="text-xs font-semibold text-violet-700 hover:underline"
                   >
-                    {useCustomTopic ? `Choose ${gradeLevel} preset` : "Type custom topic"}
+                    {useCustomTopic ? "Choose a preset" : "Type custom topic"}
                   </button>
                 </div>
 
@@ -453,14 +446,14 @@ export function LessonPrepStudio({
                     type="text"
                     value={customTopic}
                     onChange={(e) => setCustomTopic(e.target.value)}
-                    placeholder={`Enter a ${gradeLevel} ${subject} topic or competency...`}
+                    placeholder={"Enter a topic or competency..."}
                     className="w-full text-sm bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-slate-900"
                   />
                 ) : (
                   <CustomSelect
                     value={topic}
                     onChange={setTopic}
-                    placeholder={`Select a ${gradeLevel} ${subject} topic...`}
+                    placeholder={gradeLevel ? "Select a topic..." : "Select a grade level first"}
                     options={presetOptions.map((preset) => ({
                       value: preset.topic,
                       label: preset.topic,
@@ -470,10 +463,17 @@ export function LessonPrepStudio({
                 )}
               </div>
             </div>
+              <label className="proficiency-equipment-toggle flex items-center gap-2 min-h-11 border-t border-slate-200 pt-2 text-sm font-medium text-slate-700">
+                <Checkbox
+                  checked={usesLabEquipment}
+                  onChange={(e) => setUsesLabEquipment(e.target.checked)}
+                />
+                <span>School science laboratory equipment is available</span>
+              </label>
             </div>
 
             {/* Deadline-Aware Lead Time Banner + Matched Shared LAC Library Check */}
-            <div
+            {classDate && <div
               className={`rounded-xl border px-4 py-3 flex items-start gap-3 ${
                 meetsThreeDayWindow
                   ? "border-emerald-200 bg-emerald-50/70"
@@ -511,9 +511,9 @@ export function LessonPrepStudio({
                   </div>
                 )}
               </div>
-            </div>
+            </div>}
 
-            {/* Lesson proficiency with a compact classroom materials toggle */}
+            {/* Lesson proficiency */}
             <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
               <h2 className="text-sm font-semibold text-slate-800">
                 Lesson Proficiency Self-Calibration
@@ -543,13 +543,6 @@ export function LessonPrepStudio({
                 <strong>{CAREER_STAGE_LABELS[careerStage].name}:</strong>{" "}
                 {CAREER_STAGE_LABELS[careerStage].focus}
               </p>
-              <label className="proficiency-equipment-toggle flex items-center gap-2 border-t border-slate-100 pt-2 text-[11px] font-medium text-slate-700">
-                <Checkbox
-                  checked={usesLabEquipment}
-                  onChange={(e) => setUsesLabEquipment(e.target.checked)}
-                />
-                <span>School science laboratory equipment is available</span>
-              </label>
             </div>
 
             {/* Optional Mentor Fact Sheet (JSON or plain text) */}
@@ -612,17 +605,15 @@ export function LessonPrepStudio({
                     <span>Building your Concept Pack…</span>
                   </>
                 ) : (
-                  <>
-                    <Sparkles className="w-4 h-4" />
-                    <span>{copy.buildSupportBtn}</span>
-                  </>
+                  copy.buildSupportBtn
                 )}
               </button>
             </div>
           </form>
         </section>
+        </div>
       ) : (
-        <section aria-label="Concept Pack" className="min-w-0 space-y-3">
+        <section id="concept-pack" tabIndex={-1} aria-label="Concept Pack" className="min-w-0 space-y-3">
           <div className="flex items-center justify-between gap-2">
             <nav aria-label="Breadcrumb">
               <a href="#lesson-prep-studio" onClick={(event) => {
@@ -691,10 +682,11 @@ export function LessonPrepStudio({
               <ConceptPackSteps
                 key={activeCase.id}
                 pack={currentPack}
+                initialStep={initialPackStep}
                 teacherMajor={activeCase.teacherMajor}
                 progressKey={`bansay-pack-progress-${user.id}-${activeCase.id}`}
                 renderOfflineFooter={(backButton, practiceButton) => (
-                  <OfflinePackCard storageKey={`bansay-offline-pack-${user.id}-${activeCase.id}`} text={offlinePackText(activeCase, currentPack)} backButton={backButton} practiceButton={practiceButton} />
+                  <OfflinePackCard storageKey={offlinePackStorageKey(user.id, activeCase.id)} text={offlinePackText(activeCase, currentPack)} backButton={backButton} practiceButton={practiceButton} />
                 )}
                 onSelfCheckComplete={(score) => void onPatchCase(activeCase.id, { selfCheckScore: score })}
                 onPracticeExplaining={onGoToRehearsal}

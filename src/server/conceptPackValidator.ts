@@ -48,11 +48,6 @@ export interface ConceptPackFactSheet {
     freshCasePrompt: string;
   };
   references?: FactSheetReference[];
-  source?: {
-    title: string;
-    competencyCode: string;
-    url: string;
-  };
 }
 
 export interface ValidateConceptPackOptions {
@@ -615,9 +610,6 @@ export function parseOptionalFactSheet(
         ? (parsedObj.rehearsalPrompt as ConceptPackFactSheet["rehearsalPrompt"])
         : undefined,
       references: parseFactSheetReferences(parsedObj.references),
-      source: isRecord(parsedObj.source)
-        ? (parsedObj.source as ConceptPackFactSheet["source"])
-        : undefined,
     };
   }
 
@@ -710,7 +702,7 @@ export function validateModelSources(candidate: unknown, factSheet?: ConceptPack
   const text = strings(candidate).join(" ");
   const competency = factSheet?.depedCompetency.trim().replace(/\s+/g, " ").toLowerCase();
   if ("curriculum" in candidate || "references" in candidate ||
-      /(?:https?:\/\/|www\.|deped\.gov\.ph|\b[A-Z]{1,5}\d{1,2}[A-Z]{1,6}-[IVX]{1,4}[a-z]+(?:-[a-z]+)?-\d+\b)/i.test(text) ||
+      /(?:https?:\/\/|www\.|deped\.gov\.ph|\b[A-Z]{1,5}\d{1,2}[A-Z]{1,6}-[IVX]{1,4}-?[a-z]{1,3}(?:-[a-z]{1,3})?-\d+\b)/i.test(text) ||
       Boolean(competency && text.replace(/\s+/g, " ").toLowerCase().includes(competency))) {
     return ["Do not include curriculum metadata, competency codes, curriculum quotes, or URLs in model output."];
   }

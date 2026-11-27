@@ -243,3 +243,9 @@ input[type="checkbox"] { height: 1.125rem; width: 1.125rem; accent-color: var(--
   .auth-header-inner > div:first-child > div:nth-child(2) p:last-child { max-width: 19rem; margin-inline: auto; }
   .auth-card { padding: 1.25rem; }
 }
+
+@media (640px <= width < 1024px) {
+  .sidebar-nav-item:is(:hover, :focus) > .sidebar-rail-tooltip {
+    display: block;
+  }
+}

@@ -163,7 +163,7 @@ function normalizeGeminiError(error: unknown, role: ModelRole): Error & { status
     );
   }
 
-  return Object.assign(new Error(rawMessage), { status });
+  return Object.assign(new Error(rawMessage, { cause: error }), { status });
 }
 
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 1): Promise<T> {

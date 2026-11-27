@@ -1,327 +1,85 @@
-import {
-  Award,
-  BookOpen,
-  ChevronLeft,
-  ChevronRight,
-  Globe,
-  Lock,
-  MessageSquare,
-  Settings,
-  Sparkles,
-  Users,
-  X,
-} from "lucide-react";
+﻿import { Award, BookOpen, ChevronRight, MessageSquare, Sparkles, Users } from "lucide-react";
+import type { ActiveSection } from "../types/bansay";
+import type { AnnualTrackProgress } from "../lib/workspaceNavigation";
+import { AccountMenu, type AccountMenuProps } from "./AccountMenu";
 import { BansayLogo } from "./BansayLogo";
-import type { ActiveSection, BansayLanguage, UserRole } from "../types/bansay";
-import { UI_COPY } from "../data/bansayData";
-import { CustomSelect } from "./CustomSelect";
 
 interface SidebarProps {
   activeSection: ActiveSection;
   onSelectSection: (section: ActiveSection) => void;
-  language: BansayLanguage;
-  role: UserRole;
-  completedCompetencies: number;
-  totalCompetencies: number;
+  annualTrack?: AnnualTrackProgress;
+  mentorBadge: { ready: number; waiting: number };
   pendingReviewsCount: number;
-  mobileOpen: boolean;
-  onCloseMobile: () => void;
-  lowDataMode: boolean;
-  onToggleLowDataMode: () => void;
-  onChangeLanguage: (language: BansayLanguage) => void;
-  teacherName: string;
-  onLogout: () => void;
+  account: AccountMenuProps;
 }
 
-export function Sidebar({
-  activeSection,
-  onSelectSection,
-  language,
-  role,
-  completedCompetencies,
-  totalCompetencies,
-  pendingReviewsCount,
-  mobileOpen,
-  onCloseMobile,
-  lowDataMode,
-  onToggleLowDataMode,
-  onChangeLanguage,
-  teacherName,
-  onLogout,
-}: SidebarProps) {
-  const copy = UI_COPY[language];
-  const progressPct = Math.min(100, Math.round((completedCompetencies / totalCompetencies) * 100));
+const teacherItems = [
+  { id: "prep", label: "Lesson Prep Studio", icon: Sparkles },
+  { id: "rehearsal", label: "Rehearsal & Review", icon: MessageSquare },
+  { id: "library", label: "Shared LAC Library", icon: Users },
+  { id: "portfolio", label: "Teaching Portfolio", icon: Award },
+] as const;
 
-  const navItems: Array<{
-    id: ActiveSection;
-    label: string;
-    icon: typeof Sparkles;
-    hint?: string;
-    detail: string;
-  }> = [
-    ...(role === "teacher"
-      ? [
-          {
-            id: "prep" as ActiveSection,
-            label: "Lesson Prep Studio",
-            icon: Sparkles,
-            detail: "Plan & Concept Pack",
-          },
-          {
-            id: "rehearsal" as ActiveSection,
-            label: "Rehearsal & Review",
-            icon: MessageSquare,
-            detail: "Practice & mentor feedback",
-          },
-          {
-            id: "library" as ActiveSection,
-            label: "Shared LAC Library",
-            icon: Users,
-            detail: "Verified lesson guides",
-          },
-          {
-            id: "portfolio" as ActiveSection,
-            label: "Teaching Portfolio",
-            icon: Award,
-            detail: "Classroom evidence & MOV",
-          },
-        ]
-      : role === "mentor"
-      ? [
-          {
-            id: "cohort" as ActiveSection,
-            label: "Review Queue",
-            icon: Users,
-            detail: "Pack audit, transcript, fresh case",
-            hint: pendingReviewsCount ? `${pendingReviewsCount}` : undefined,
-          },
-          {
-            id: "library" as ActiveSection,
-            label: "Shared LAC Library",
-            icon: BookOpen,
-            detail: "Published verified packs",
-          },
-        ]
-      : [
-          {
-            id: "cohort" as ActiveSection,
-            label: "Pilot Cohort Summary",
-            icon: Users,
-            detail: "Tables 4–7 & anonymized trends",
-          },
-        ]),
-  ];
+const mentorItems = [
+  { id: "cohort", label: "Review Queue", icon: Users },
+  { id: "library", label: "Shared LAC Library", icon: BookOpen },
+] as const;
 
-  const handleNav = (id: ActiveSection) => {
-    onSelectSection(id);
-    onCloseMobile();
-  };
+const coordinatorItems = [
+  { id: "cohort", label: "Pilot Cohort Summary", icon: Users },
+] as const;
+
+export function Sidebar({ activeSection, onSelectSection, annualTrack, mentorBadge, pendingReviewsCount, account }: SidebarProps) {
+  const role = account.user.role;
+  const navItems = role === "teacher" ? teacherItems : role === "mentor" ? mentorItems : coordinatorItems;
 
   return (
-    <>
-      {mobileOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-slate-950/50 lg:hidden"
-          onClick={onCloseMobile}
-          aria-hidden="true"
-        />
-      )}
-
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 flex h-[100dvh] w-[min(16rem,calc(100vw-2.5rem))] flex-col justify-between overflow-y-auto bg-bansay-deep text-left text-white transition-transform duration-200 lg:sticky lg:top-0 lg:h-[100dvh] lg:w-64 lg:translate-x-0 lg:overflow-y-auto shrink-0 ${
-          mobileOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-        aria-label="Primary navigation"
-      >
-        <div>
-          {/* Brand Header */}
-          <div className="flex items-center justify-between border-b border-white/10 px-5 pt-5 pb-4">
-            <div className="flex items-center gap-2.5">
-              <BansayLogo className="w-8 h-8 shrink-0" light />
-              <div className="leading-none">
-                <span className="sidebar-masthead text-lg tracking-tight text-white">
-                  BANSAY
-                </span>
-                <p className="mt-0.5 whitespace-nowrap text-[11px] text-purple-200/80">
-                  Iligan Secondary Pilot
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={onCloseMobile}
-              className="rounded-lg p-1.5 text-purple-200 hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-white lg:hidden"
-              aria-label="Close navigation"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-
-          {/* Workspace Nav */}
-          <div className="px-3.5 pt-5">
-            <p className="mb-2 px-2.5 text-xs font-medium text-purple-200/75">
-              {role === "teacher"
-                ? "TEACHER WORKSPACE"
-                : role === "mentor"
-                ? "MENTOR WORKSPACE"
-                : "COORDINATOR / SCHOOL HEAD"}
-            </p>
-            <nav className="space-y-1">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeSection === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleNav(item.id)}
-                    className={`flex w-full items-center justify-between gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-white ${
-                      isActive
-                        ? "bg-white font-semibold text-[#2B1354] shadow-sm"
-                        : "text-purple-100/90 hover:bg-white/10 hover:text-white"
-                    }`}
-                  >
-                    <span className="flex min-w-0 flex-1 items-center gap-2.5 text-left">
-                      <Icon
-                        className={`h-4 w-4 shrink-0 ${
-                          isActive ? "text-[#5B21B6]" : "text-purple-200"
-                        }`}
-                      />
-                      <span className="min-w-0 text-left">
-                        <span className="block truncate text-left">{item.label}</span>
-                        <span className="mt-0.5 block truncate text-left text-[10px] font-normal opacity-75">
-                          {item.detail}
-                        </span>
-                      </span>
-                    </span>
-                    {item.hint && (
-                      <span
-                        className={`rounded px-1.5 py-0.5 font-mono text-xs tabular-nums ${
-                          isActive
-                            ? "bg-purple-100 text-bansay-strong"
-                            : "bg-white/15 text-purple-100"
-                        }`}
-                      >
-                        {item.hint}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </nav>
-          </div>
-        </div>
-
-        {/* Bottom Annual Track Card & Privacy Note */}
-        <div className="space-y-3 px-4 pt-4 pb-5">
-          {role === "teacher" && (
-            <div className="rounded-xl border border-white/10 bg-[#412277] p-4">
-              <div className="mb-2 flex items-center gap-2 text-purple-100">
-                <BookOpen className="h-4 w-4 shrink-0 text-purple-200" />
-                <span className="text-xs font-semibold text-white">
-                  {copy.annualTrackTitle}
-                </span>
-              </div>
-              <p className="text-xs leading-relaxed text-purple-100/85 tabular-nums">
-                <strong className="font-semibold text-white">
-                  {completedCompetencies} of {totalCompetencies}
-                </strong>{" "}
-                competencies ready for portfolio review
-              </p>
-              <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/15">
-                <div
-                  className="h-full rounded-full bg-purple-300 transition-all duration-300"
-                  style={{ width: `${progressPct}%` }}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => handleNav("portfolio")}
-                className="mt-3 inline-flex items-center gap-1 text-xs font-medium whitespace-nowrap text-purple-100 hover:text-white focus-visible:outline-2 focus-visible:outline-white"
-              >
-                <span>{copy.annualTrackLink}</span>
-                <ChevronRight className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          )}
-
-          <div className="rounded-xl border border-white/10 bg-white/5 p-3">
-            <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-purple-300 text-xs font-bold text-bansay-deep">
-                {teacherName
-                  .split(/\s+/)
-                  .filter(Boolean)
-                  .slice(0, 2)
-                  .map((part) => part[0])
-                  .join("")
-                  .toUpperCase() || "T"}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-xs font-semibold text-white">{teacherName}</p>
-                <p className="text-[11px] text-purple-200 capitalize">
-                  {role === "teacher"
-                    ? "Teacher"
-                    : role === "mentor"
-                    ? "Subject Mentor"
-                    : "Coordinator"}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <details className="group rounded-xl border border-white/10 bg-white/5">
-            <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2.5 text-xs font-semibold text-white">
-              <span className="flex items-center gap-2">
-                <Settings className="h-3.5 w-3.5 text-purple-200" /> Profile &amp; Settings
+    <aside className="sm:sticky sm:top-0 sm:flex sm:h-[100dvh] sm:w-16 sm:shrink-0 sm:flex-col sm:bg-bansay-deep sm:text-white lg:w-64 lg:overflow-y-auto">
+      <div className="hidden min-h-16 items-center justify-center gap-2 border-b border-white/20 px-2 sm:flex lg:justify-start lg:px-4">
+        <BansayLogo className="size-8 shrink-0" light />
+        <span className="sidebar-masthead hidden text-lg text-white lg:block">BANSAY</span>
+      </div>
+      <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-40 flex border-t border-white/20 bg-bansay-deep px-1 pt-1 pb-[max(.25rem,env(safe-area-inset-bottom))] text-white sm:static sm:flex-col sm:gap-1 sm:border-0 sm:bg-transparent sm:p-2 lg:px-3 lg:pt-4">
+        {navItems.map(({ id, label, icon: Icon }) => {
+          const active = activeSection === id;
+          const ready = role === "teacher" && id === "rehearsal" ? mentorBadge.ready : 0;
+          const waiting = role === "teacher" && id === "rehearsal" ? mentorBadge.waiting : 0;
+          const queue = role === "mentor" && id === "cohort" ? pendingReviewsCount : 0;
+          const status = [ready ? `${ready} mentor ${ready === 1 ? "note" : "notes"} ready` : "", waiting ? "Waiting for mentor" : "", queue ? `${queue} pending reviews` : ""].filter(Boolean).join(", ");
+          return (
+            <button key={id} type="button" aria-current={active ? "page" : undefined} aria-label={label}
+              aria-description={status || undefined} onClick={() => onSelectSection(id)}
+              className={`sidebar-nav-item relative flex min-h-[44px] min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-1 py-1.5 text-center focus-visible:outline-white sm:w-full sm:px-2 lg:flex-row lg:justify-start lg:gap-2.5 lg:px-3 lg:py-2 lg:text-left ${active
+                ? "bg-white font-semibold text-bansay-deep"
+                : "text-purple-100 hover:bg-white/10 hover:text-white"}`}>
+              <span className="relative shrink-0">
+                <Icon aria-hidden="true" className="size-[18px]" />
+                {Boolean(ready || waiting || queue) && (
+                  <span aria-hidden="true" className={`absolute -right-1.5 -top-1 size-2.5 rounded-full ring-1 lg:hidden ${active ? "ring-white" : "ring-bansay-deep"} ${ready || queue ? (active ? "bg-emerald-700" : "bg-emerald-300") : (active ? "bg-amber-700" : "bg-amber-300")}`} />
+                )}
               </span>
-              <ChevronLeft className="h-3.5 w-3.5 rotate-[-90deg] text-purple-200 transition-transform group-open:rotate-90" />
-            </summary>
-            <div className="space-y-3 border-t border-white/10 px-3 py-3">
-              <button
-                type="button"
-                onClick={onToggleLowDataMode}
-                className="flex w-full items-center justify-between text-left text-xs text-purple-100 hover:text-white"
-              >
-                <span>Low-data mode</span>
-                <span className="rounded bg-white/10 px-1.5 py-0.5 text-[10px]">
-                  {lowDataMode ? "On" : "Off"}
-                </span>
-              </button>
-
-              <div>
-                <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium text-purple-200">
-                  <Globe className="h-3.5 w-3.5" /> Language
-                </p>
-                <CustomSelect
-                  value={language}
-                  onChange={onChangeLanguage}
-                  options={[
-                    { value: "en", label: "English" },
-                    { value: "fil", label: "Filipino" },
-                    { value: "ceb", label: "Cebuano" },
-                  ]}
-                  ariaLabel="Language"
-                  className="px-2 py-1.5 text-xs"
-                  dark
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={onLogout}
-                className="w-full rounded-lg border border-white/20 px-2.5 py-2 text-left text-xs font-semibold text-white hover:bg-white/10 focus-visible:outline-2 focus-visible:outline-white"
-              >
-                Log out
-              </button>
-            </div>
-          </details>
-
-          <div className="flex items-center gap-2 px-1 text-[11px] text-purple-200/80">
-            <Lock className="h-3.5 w-3.5 shrink-0" />
-            <span>{copy.privacyNote}</span>
-          </div>
-        </div>
-      </aside>
-    </>
+              <span className="text-[12px] leading-tight sm:hidden lg:block lg:flex-1 lg:text-sm">{label}
+                {Boolean(ready || waiting || queue) && <span className={`mt-1 hidden text-[12px] font-semibold lg:block ${active ? "text-bansay-strong" : "text-white"}`}>{status}</span>}
+              </span>
+              <span aria-hidden="true" className="sidebar-rail-tooltip pointer-events-none absolute left-full top-1/2 z-50 ml-2 hidden w-max max-w-56 -translate-y-1/2 rounded-lg bg-bansay-deep px-2.5 py-2 text-[12px] text-white shadow-lg">
+                {label}{status && <span className="block text-purple-100">{status}</span>}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+      <div className="mt-auto hidden space-y-2 px-2 pb-3 sm:block lg:px-3">
+        {role === "teacher" && annualTrack && (
+          <section aria-label="Optional annual track" className="my-2 hidden rounded-xl border border-white/20 bg-white/10 p-3 lg:block">
+            <p className="text-sm font-semibold text-white">Optional annual track</p>
+            <p className="mt-1 text-[12px] text-purple-100">{annualTrack.practiced} of {annualTrack.total} competencies practiced</p>
+            <button type="button" onClick={() => onSelectSection("portfolio")} className="flex min-h-[44px] items-center gap-1 rounded-md text-[12px] font-semibold text-white underline focus-visible:outline-white">
+              View progress <ChevronRight aria-hidden="true" className="size-4" />
+            </button>
+          </section>
+        )}
+        <AccountMenu {...account} />
+      </div>
+    </aside>
   );
 }

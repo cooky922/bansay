@@ -4,11 +4,11 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch server.ts",
+    "dev": "node --watch server.ts",
     "build": "vite build && npm run check:references",
     "check:references": "node scripts/check-fact-sheet-references.mjs",
     "start": "node server.ts",
-    "preview": "vite preview",
+    "preview": "node server.ts --preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
   },

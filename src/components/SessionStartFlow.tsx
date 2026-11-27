@@ -156,7 +156,9 @@ export function SessionStartFlow({
     } catch (err) {
       setAuthToken(null);
       setAuthError(
-        err instanceof Error ? err.message : "Unable to connect to BANSAY server."
+        err instanceof TypeError
+          ? "Could not connect to BANSAY. Check your connection and try again."
+          : err instanceof Error ? err.message : "Unable to connect to BANSAY server."
       );
     } finally {
       setSubmitting(false);

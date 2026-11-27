@@ -1,4 +1,4 @@
-const cacheName = "bansay-shell-v1";
+const cacheName = "bansay-shell-v2";
 const appRoot = new URL("./", self.location.href);
 
 self.addEventListener("install", (event) => {
@@ -16,7 +16,12 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((key) => key.startsWith("bansay-shell-") && key !== cacheName)
+      .map((key) => caches.delete(key)));
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener("fetch", (event) => {

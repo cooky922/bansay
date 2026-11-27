@@ -121,7 +121,7 @@ export const UI_COPY: Record<
     cohortTitle: "Four-week pilot cohort oversight",
     cohortSubtitle: "Anonymized participation, restated 160-minute review budget, engineering controls, and falsifiable pilot metrics.",
     cohortKicker: "School & Division Cohort",
-    buildSupportBtn: "Build 10-min Concept Pack",
+    buildSupportBtn: "Build concept pack",
     submitMentorBtn: "Submit rehearsal for review",
     openPeerLibraryBtn: "Open Shared LAC Library",
     exportPortfolioBtn: "Export teacher-custody MOV / CPD summary",

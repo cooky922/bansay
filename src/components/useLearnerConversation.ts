@@ -17,8 +17,9 @@ export function useLearnerConversation(
   language: BansayLanguage,
   teacher: { id: string; displayName?: string },
   exchange: (request: RehearsalRequest) => Promise<LessonCase>,
+  demo = false,
 ) {
-  const key = `bansay-rehearsal-${lesson?.id}`;
+  const key = `bansay-rehearsal-${demo ? "demo-" : ""}${lesson?.id}`;
   const [pending, setPending] = useState(() => readPending(key));
   const [offline, setOffline] = useState(() => !navigator.onLine);
   const previousNameKey = `bansay-last-rehearsal-student-${teacher.id}`;
@@ -137,7 +138,7 @@ export function useLearnerConversation(
       : undefined;
     setOptimistic(teacherTurn);
     try {
-      let scripted = offline || pending.length > 0;
+      let scripted = !demo && (offline || pending.length > 0);
       if (!scripted) {
         try {
           const record = await exchange(request);
@@ -190,7 +191,8 @@ export function useLearnerConversation(
   }
 
   useEffect(() => {
-    if (!lesson || !needsOpening || openingStarted.current) return;
+    if (!needsOpening) { openingStarted.current = false; return; }
+    if (!lesson || openingStarted.current) return;
     openingStarted.current = true;
     void send();
   }, [lesson, needsOpening]);

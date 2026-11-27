@@ -99,6 +99,22 @@ export function CohortOversight({
   const [isDrafting, setIsDrafting] = useState(false);
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [mentorError, setMentorError] = useState<string | null>(null);
+
+  async function downloadAttachment(caseId: string, assetId: string, label: string) {
+    try {
+      const response = await bansayFetch(`/api/bansay/cases/${caseId}/media/${assetId}`);
+      if (!response.ok) throw new Error("This attachment is no longer available.");
+      const media = await response.blob();
+      const url = URL.createObjectURL(media);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = label;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setMentorError("This attachment could not be downloaded.");
+    }
+  }
   const [mentorSavedBanner, setMentorSavedBanner] = useState<string | null>(null);
   const [demoNotice, setDemoNotice] = useState(false);
 
@@ -483,7 +499,7 @@ export function CohortOversight({
                       0 && (
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3.5 space-y-1.5">
                         <p className="text-xs font-semibold text-slate-700">
-                          Attached opt-in media retention metadata
+                          Consented attachments
                         </p>
                         {selectedCase.mediaAssets
                           .filter((m) => m.status !== "purged")
@@ -491,6 +507,7 @@ export function CohortOversight({
                             <p key={asset.id} className="text-xs text-slate-600 tabular-nums">
                               {asset.label} ({asset.tier} · auto-deletes{" "}
                               {asset.expiresAt?.slice(0, 10)})
+                              {asset.hasContent && <button type="button" className="ml-2 text-bansay-strong underline" onClick={() => void downloadAttachment(selectedCase.id, asset.id, asset.label)}>Download</button>}
                             </p>
                           ))}
                       </div>
